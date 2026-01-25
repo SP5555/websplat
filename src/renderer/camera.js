@@ -22,6 +22,9 @@ export default class Camera {
         this.minDistance = 0.1;
         this.maxDistance = 50.0;
 
+        this.minPitch = -Math.PI / 2 + 0.01;
+        this.maxPitch = Math.PI / 2 - 0.01;
+
         this.vMatrix = mat4.create();
 
         this.fov = 45 * Math.PI / 180; // in radians
@@ -41,21 +44,33 @@ export default class Camera {
         const { dx, dy } = this.input.consumeDelta();
         const scrollDelta = this.input.consumeScroll();
 
-        const distance = vec3.distance(this.position, this.target);
+        // offset of camera from target
+        const offset = vec3.create();
+        vec3.subtract(offset, this.position, this.target);
+        const viewDir = vec3.normalize(vec3.create(), vec3.negate(vec3.create(), offset));
+        const distance = vec3.length(offset);
 
         if (this.input.mouseDownButtons.left && !this.input.shiftPressed) { // rotate
-            const offset = vec3.create();
-            vec3.subtract(offset, this.position, this.target);
 
-            const x_angle = -dx * this.rotateSpeed * dt;
-            const y_angle = -dy * this.rotateSpeed * dt;
-            let rotationMatrix = mat4.create();
+            const dir = vec3.normalize(vec3.create(), offset);
 
-            rotationMatrix = mat4.rotate(rotationMatrix, rotationMatrix, x_angle, this.up);
-            rotationMatrix = mat4.rotate(rotationMatrix, rotationMatrix, y_angle, this.right);
+            let pitch = Math.asin(dir[1]);
+            pitch += dy * this.rotateSpeed * dt;
+            pitch = Math.max(this.minPitch, Math.min(this.maxPitch, pitch));
 
-            const rotatedOffset = vec3.transformMat4(vec3.create(), offset, rotationMatrix);
-            vec3.add(this.position, this.target, rotatedOffset);
+            let yaw = Math.atan2(dir[0], dir[2]);
+            yaw += -dx * this.rotateSpeed * dt;
+            yaw = yaw % (2 * Math.PI);
+
+            const newDir = vec3.fromValues(
+                Math.sin(yaw) * Math.cos(pitch),
+                Math.sin(pitch),
+                Math.cos(yaw) * Math.cos(pitch)
+            );
+
+            const newOffset = vec3.create();
+            vec3.scale(newOffset, newDir, distance);
+            vec3.add(this.position, this.target, newOffset);
         }
 
         if (this.input.mouseDownButtons.left && this.input.shiftPressed) { // pan
@@ -68,17 +83,10 @@ export default class Camera {
         }
 
         if (scrollDelta !== 0) { // zoom
-            // Direction from camera to target
-            const viewDir = vec3.create();
-            vec3.subtract(viewDir, this.target, this.position);
-            vec3.normalize(viewDir, viewDir);
-
-            // Scale the direction by scrollDelta and distance
             const distance = vec3.distance(this.position, this.target);
             const translation = vec3.create();
             vec3.scale(translation, viewDir, -scrollDelta * distance * this.zoomSpeed);
 
-            // Apply zoom
             vec3.add(this.position, this.position, translation);
 
             // Clamp distance
