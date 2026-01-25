@@ -5,121 +5,100 @@ import WGSLShader from "./wgsl-shader/wgsl-shader.js";
 
 export default class Renderer {
     constructor(input) {
+        this.canvas = document.getElementById('canvas00');
         this.device = null;
         this.context = null;
-        this.canvas = document.getElementById('canvas00');
 
-        this.vertexCount = null;
         this.vertexBuffer = null;
+        this.vertexCount = 0;
         this.pipeline = null;
 
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
         this.cameraBuffer = null;
+        this.cameraBindGroup = null;
 
-        this.initializeRenderer();
-        this.initializeEventListeners();
+        this.init();
     }
 
-    async initializeRenderer() {
+    async init() {
         this.resizeCanvas();
+        this.initializeEventListeners();
 
-        if (!navigator.gpu) {
-            console.error("WebGPU not supported in this browser.");
+        if (!(await this.initDevice())) {
+            console.error("Failed to initialize WebGPU device.");
             return;
         }
 
-        // Request adapter + device
+        this.createCameraBuffer();
+        await this.createPipeline();
+    }
+
+    /* ===== ===== GPU Setup ===== ===== */
+
+    async initDevice() {
+        if (!navigator.gpu) {
+            console.error("WebGPU not supported in this browser.");
+            return false;
+        }
+
         const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
         if (!adapter) {
             console.error("Failed to get GPU adapter.");
-            return;
+            return false;
         }
-        this.device = await adapter.requestDevice();
 
+        this.device = await adapter.requestDevice();
         this.context = this.canvas.getContext('webgpu');
         this.configureContext();
 
-        // camera
+        return true;
+    }
+
+    createCameraBuffer() {
         this.cameraBuffer = this.device.createBuffer({
             label: "Camera Buffer",
-            size: 2 * 16 * 4, // two 4x4 f32 matrices
+            size: 2 * 16 * 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
+    }
 
-        // load shader
+    async createPipeline() {
         const shader = new WGSLShader(this.device, './assets/shader.wgsl');
         await shader.load();
-        const shaderModule = shader.getModule();
-
-        this.vertexBuffer = this.device.createBuffer({
-            label: "Vertex Buffer",
-            size: 0,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
-        });
 
         this.pipeline = this.device.createRenderPipeline({
             label: "Render Pipeline",
             layout: 'auto',
             vertex: {
-                module: shaderModule,
+                module: shader.getModule(),
                 entryPoint: 'vs_main',
                 buffers: [{
                     arrayStride: 3 * 4,
-                    attributes: [{
-                        format: 'float32x3',
-                        offset: 0,
-                        shaderLocation: 0,
-                    }]
+                    attributes: [{ format: 'float32x3', offset: 0, shaderLocation: 0 }]
                 }]
             },
             fragment: {
-                module: shaderModule,
+                module: shader.getModule(),
                 entryPoint: 'fs_main',
-                targets: [{
-                    format: navigator.gpu.getPreferredCanvasFormat()
-                }]
+                targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
             },
             primitive: { topology: 'point-list' }
         });
 
         this.cameraBindGroup = this.device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(0),
-            entries: [{
-                binding: 0,
-                resource: {
-                    buffer: this.cameraBuffer
-                }
-            }]
+            entries: [{ binding: 0, resource: { buffer: this.cameraBuffer } }]
         });
-    }
 
-    initializeEventListeners() {
-        window.addEventListener('resize', () => this.onWindowResize(), false);
-    }
-
-    setMeshData(meshData) {
-        const positions = meshData.positions;
-        this.vertexCount = positions.length / 3;
-
-        // Reallocate GPU buffer if needed
-        this.vertexBuffer.destroy();
         this.vertexBuffer = this.device.createBuffer({
             label: "Vertex Buffer",
-            size: positions.byteLength,
+            size: 0,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
-
-        this.device.queue.writeBuffer(this.vertexBuffer, 0, positions);
-    }
-
-    resizeCanvas() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
     }
 
     configureContext() {
         if (!this.device || !this.context) return;
-
         this.context.configure({
             device: this.device,
             format: navigator.gpu.getPreferredCanvasFormat(),
@@ -127,20 +106,54 @@ export default class Renderer {
         });
     }
 
-    render(dt) {
-        if ( !this.device || !this.context || !this.pipeline ) return;
+    /* ===== ===== Event Handling ===== ===== */
 
-        this.camera.update(dt);
-        const cameraData = new Float32Array(32);
-        cameraData.set(this.camera.vMatrix, 0);
-        cameraData.set(this.camera.pMatrix, 16);
-        this.device.queue.writeBuffer(this.cameraBuffer, 0, cameraData.buffer);
+    initializeEventListeners() {
+        window.addEventListener('resize', () => this.onWindowResize(), false);
+    }
+
+    onWindowResize() {
+        this.resizeCanvas();
+        this.configureContext();
+        this.camera.updateAspect(this.canvas.width / this.canvas.height);
+    }
+
+    resizeCanvas() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    }
+
+    /* ===== ===== Mesh Management ===== ===== */
+
+    setMeshData(meshData) {
+        const positions = meshData.positions;
+        this.vertexCount = positions.length / 3;
+
+        this.reallocateVertexBuffer(positions.byteLength);
+        this.device.queue.writeBuffer(this.vertexBuffer, 0, positions);
+    }
+
+    reallocateVertexBuffer(size) {
+        if (this.vertexBuffer) this.vertexBuffer.destroy();
+        this.vertexBuffer = this.device.createBuffer({
+            label: "Vertex Buffer",
+            size: size,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+        });
+    }
+
+    /* ===== ===== Rendering ===== ===== */
+
+    render(dt) {
+        if (!this.device || !this.context || !this.pipeline) return;
+
+        this.updateCameraBuffer(dt);
 
         const encoder = this.device.createCommandEncoder();
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),
-                clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                clearValue: { r: 0, g: 0, b: 0, a: 1 },
                 loadOp: 'clear',
                 storeOp: 'store'
             }]
@@ -149,17 +162,19 @@ export default class Renderer {
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, this.cameraBindGroup);
         pass.setVertexBuffer(0, this.vertexBuffer);
-        if (this.vertexCount) {
-            pass.draw(this.vertexCount, 1, 0, 0);
-        }
-        pass.end();
+        if (this.vertexCount) pass.draw(this.vertexCount, 1);
 
+        pass.end();
         this.device.queue.submit([encoder.finish()]);
     }
 
-    onWindowResize() {
-        this.resizeCanvas();
-        this.configureContext();
-        this.camera.updateAspect(this.canvas.width / this.canvas.height);
+    updateCameraBuffer(dt) {
+        this.camera.update(dt);
+
+        const cameraData = new Float32Array(32);
+        cameraData.set(this.camera.vMatrix, 0);
+        cameraData.set(this.camera.pMatrix, 16);
+
+        this.device.queue.writeBuffer(this.cameraBuffer, 0, cameraData.buffer);
     }
 }
