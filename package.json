@@ -1,0 +1,12 @@
+{
+  "name": "3dgs-webgpu-fafo",
+  "version": "1.0.0",
+  "description": "A hobby project, a small simulator featuring procedural terrain generation, dynamic seasons, and vegetation.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
