@@ -14,6 +14,14 @@ export default class GUIManager {
 
     setupGUI() {
         this.gui.add({ loadShader: () => this.fileInput.click() }, 'loadShader').name('Open PLY File');
+
+        const cameraState = { fov: 60 }; // default value
+
+        this.gui.add(cameraState, 'fov', 10, 80, 1)
+            .name('FOV')
+            .onChange(value => {
+                eventBus.emit(EVENTS.CAMERA_FOV_CHANGE, value);
+            });
     }
 
     setupFileInput() {

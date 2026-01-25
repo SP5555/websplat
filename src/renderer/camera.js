@@ -1,12 +1,15 @@
 'use strict';
 
 import { mat4, vec3 } from 'gl-matrix';
+import { eventBus } from "../utils/event-emitters.js";
+import { EVENTS } from "../utils/event.js";
+import { isMouseOverGUI } from '../utils/gui-utils.js';
 
 export default class Camera {
     constructor(input, aspect=1.0) {
         this.input = input;
 
-        this.position = vec3.fromValues(0, 0, 5);
+        this.position = vec3.fromValues(0, 0, 3);
         this.target = vec3.fromValues(0, 0, 0);
 
         this.forward = null;
@@ -27,11 +30,19 @@ export default class Camera {
 
         this.vMatrix = mat4.create();
 
-        this.fov = 45 * Math.PI / 180; // in radians
+        this.fov = 60 * Math.PI / 180; // in radians
         this.aspect = aspect;
         this.near = 0.1;
         this.far = 100.0;
         this.pMatrix = mat4.perspective(mat4.create(), this.fov, this.aspect, this.near, this.far);
+
+        this.initializeEventListeners();
+    }
+
+    initializeEventListeners() {
+        eventBus.on(EVENTS.CAMERA_FOV_CHANGE, (fovDegrees) => {
+            this.updateFOV(fovDegrees);
+        });
     }
 
     updateViewSpaceVectors() {
@@ -41,6 +52,7 @@ export default class Camera {
     }
 
     update(dt=0.016) {
+        if (isMouseOverGUI()) return;
         const { dx, dy } = this.input.consumeDelta();
         const scrollDelta = this.input.consumeScroll();
 
@@ -105,6 +117,11 @@ export default class Camera {
 
     updateAspect(aspect) {
         this.aspect = aspect;
+        mat4.perspective(this.pMatrix, this.fov, this.aspect, this.near, this.far);
+    }
+
+    updateFOV(fovDegrees) {
+        this.fov = fovDegrees * Math.PI / 180;
         mat4.perspective(this.pMatrix, this.fov, this.aspect, this.near, this.far);
     }
 }

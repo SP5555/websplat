@@ -6,6 +6,7 @@ import PLYLoader from "../loaders/ply-loader.js";
 import { eventBus } from "../utils/event-emitters.js";
 import { EVENTS } from "../utils/event.js";
 import Input from "../input/input.js";
+import { GaussianPrecompute } from "../preprocessing/gaussian-precompute.js";
 
 export default class App {
     constructor() {
@@ -22,7 +23,7 @@ export default class App {
         });
 
         eventBus.on(EVENTS.MESH_READY, (meshData) => {
-            this.renderer.setMeshData(meshData);
+            this.renderer.setMeshData(GaussianPrecompute(meshData));
         });
     }
 

@@ -118,8 +118,8 @@ export default class PLYLoader {
 
             // y and z flip
             positions[i * 3 + 0] = x;
-            positions[i * 3 + 1] = -y;
-            positions[i * 3 + 2] = -z;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
         }
         return {
             vertexCount,
