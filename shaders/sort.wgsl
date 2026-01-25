@@ -19,7 +19,7 @@ struct BinParams {
 
 // shared memory for one bin
 // WARNING: size must fit in workgroup memory, adjust if needed
-var<workgroup> sharedVertices : array<Vertex, 1024>;
+var<workgroup> sharedVertices : array<Vertex, 128>;
 
 fn min(a: u32, b: u32) -> u32 {
     return select(b, a, a < b);

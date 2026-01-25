@@ -11,7 +11,7 @@ export default class Renderer {
 
         this.vertexBuffer = null;
         this.vertexCount = 0;
-        this.renderPipeline = null;
+        this.finalRenderPipeline = null;
 
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
         this.cameraBuffer = null;
@@ -31,6 +31,8 @@ export default class Renderer {
 
         this.createCameraBuffer();
         // await this.createTransformPipeline();
+        // await this.createBinPipeline();
+        // await this.createSortPipeline();
         await this.createFinalRenderPipeline();
     }
 
@@ -69,13 +71,13 @@ export default class Renderer {
 
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
-            size: this.vertexCount * 16 /*floats per vertex*/ * 4,
+            size: 80,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
-            size: this.vertexCount * 16 /*floats per vertex*/ * 4,
+            size: 80,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         });
 
@@ -102,8 +104,8 @@ export default class Renderer {
         const shader = new WGSLShader(this.device, './shaders/bin.wgsl');
         await shader.load();
 
-        const GRID_SIZE = { x: 16, y: 16 };
-        const MAX_POINTS_PER_BIN = 1024 * 512;
+        const GRID_SIZE = { x: 8, y: 8 };
+        const MAX_POINTS_PER_BIN = 1024;
 
         this.binVerticesBuffer = this.device.createBuffer({
             label: "Binned Vertices Buffer",
@@ -174,7 +176,7 @@ export default class Renderer {
         const shader = new WGSLShader(this.device, './shaders/basic-shader.wgsl');
         await shader.load();
 
-        this.renderPipeline = this.device.createRenderPipeline({
+        this.finalRenderPipeline = this.device.createRenderPipeline({
             label: "Render Pipeline",
             layout: 'auto',
             vertex: {
@@ -199,7 +201,7 @@ export default class Renderer {
         });
 
         this.cameraBindGroup = this.device.createBindGroup({
-            layout: this.renderPipeline.getBindGroupLayout(0),
+            layout: this.finalRenderPipeline.getBindGroupLayout(0),
             entries: [{ binding: 0, resource: { buffer: this.cameraBuffer } }]
         });
 
@@ -209,6 +211,36 @@ export default class Renderer {
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
     }
+
+    // async createFinalRenderPipeline() {
+    //     const shader = new WGSLShader(this.device, './shaders/final-render.wgsl');
+    //     await shader.load();
+
+    //     this.finalRenderPipeline = this.device.createRenderPipeline({
+    //         label: "Final Render Pipeline",
+    //         layout: 'auto',
+    //         vertex: {
+    //             module: shader.getModule(),
+    //             entryPoint: 'vs_main',
+    //             buffers: [] // fullscreen triangle
+    //         },
+    //         fragment: {
+    //             module: shader.getModule(),
+    //             entryPoint: 'fs_main',
+    //             targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
+    //         },
+    //         primitive: { topology: 'triangle-list' }
+    //     });
+
+    //     this.finalRenderBindGroup = this.device.createBindGroup({
+    //         layout: this.finalRenderPipeline.getBindGroupLayout(0),
+    //         entries: [
+    //             { binding: 0, resource: { buffer: this.binVerticesBuffer } },
+    //             { binding: 1, resource: { buffer: this.binCountersBuffer } },
+    //             { binding: 2, resource: { buffer: this.binParamsBuffer } }
+    //         ]
+    //     });
+    // }
 
     configureContext() {
         if (!this.device || !this.context) return;
@@ -273,6 +305,7 @@ export default class Renderer {
 
         this.reallocateVertexBuffer(bufferData.byteLength);
         this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData);
+        // this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData);
     }
 
     reallocateVertexBuffer(size) {
@@ -282,12 +315,26 @@ export default class Renderer {
             size: size,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
+
+        // if (this.transformInputBuffer) this.transformInputBuffer.destroy();
+        // this.transformInputBuffer = this.device.createBuffer({
+        //     label: "Transform Input Buffer",
+        //     size: size,
+        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        // });
+
+        // if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
+        // this.transformOutputBuffer = this.device.createBuffer({
+        //     label: "Transform Output Buffer",
+        //     size: size,
+        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        // });
     }
 
     /* ===== ===== Rendering ===== ===== */
 
     render(dt) {
-        if (!this.device || !this.context || !this.renderPipeline) return;
+        if (!this.device || !this.context || !this.finalRenderPipeline) return;
 
         this.updateCameraBuffer(dt);
 
@@ -299,7 +346,7 @@ export default class Renderer {
         //     pass.setPipeline(this.transformPipeline);
         //     pass.setBindGroup(0, this.transformBindGroup);
         //     const workgroupSize = 64;
-        //     const numWorkgroups = Math.ceil(this.vertexCount / workgroupSize);
+        //     const numWorkgroups = Math.min(16, Math.ceil(this.vertexCount / workgroupSize));
         //     pass.dispatchWorkgroups(numWorkgroups);
         //     pass.end();
         // }
@@ -310,7 +357,7 @@ export default class Renderer {
         //     pass.setPipeline(this.binPipeline);
         //     pass.setBindGroup(0, this.binBindGroup);
         //     const workgroupSize = 64;
-        //     const numWorkgroups = Math.ceil(this.vertexCount / workgroupSize);
+        //     const numWorkgroups = Math.min(16, Math.ceil(this.vertexCount / workgroupSize));
         //     pass.dispatchWorkgroups(numWorkgroups);
         //     pass.end();
         // }
@@ -320,7 +367,7 @@ export default class Renderer {
         //     const pass = encoder.beginComputePass();
         //     pass.setPipeline(this.sortPipeline);
         //     pass.setBindGroup(0, this.sortBindGroup);
-        //     const GRID_SIZE = { x: 16, y: 16 };
+        //     const GRID_SIZE = { x: 8, y: 8 };
         //     pass.dispatchWorkgroups(GRID_SIZE.x * GRID_SIZE.y);
         //     pass.end();
         // }
@@ -335,11 +382,11 @@ export default class Renderer {
                     storeOp: 'store'
                 }]
             });
-
-            pass.setPipeline(this.renderPipeline);
+            pass.setPipeline(this.finalRenderPipeline);
             pass.setBindGroup(0, this.cameraBindGroup);
             pass.setVertexBuffer(0, this.vertexBuffer);
             if (this.vertexCount) pass.draw(this.vertexCount, 1);
+            // pass.draw(3); // fullscreen triangle
             pass.end();
         }
 

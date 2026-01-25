@@ -24,18 +24,9 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     let v = vertices[i];
 
-    let transformedPos = camera.pMatrix * camera.vMatrix * vec4<f32>(v.pos, 1.0);
-
+    let t = camera.pMatrix * camera.vMatrix * vec4<f32>(v.pos.xyz, 1.0);
     // perspective divide
-    let w = transformedPos.w;
-    if (w != 0.0) {
-        transformedPos.xyz /= w;
-    }
+    let transformedPos = vec4<f32>(t.xyz / t.w, 1.0);
 
-    outVertices[i] = Vertex(
-        pos = transformedPos.xyz,
-        cov1 = v.cov1,
-        cov2 = v.cov2,
-        opacity = v.opacity
-    );
+    outVertices[i] = Vertex(transformedPos, v.cov1, v.cov2, v.opacity, v._pad);
 }
