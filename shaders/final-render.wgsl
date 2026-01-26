@@ -41,33 +41,47 @@ fn vs_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
 
 @fragment
 fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
-    // Normalize to [0,1]
+    // Normalize to [0,1] screen coordinates
     let uv = fragCoord.xy / vec2<f32>(f32(canvasParams.width), f32(canvasParams.height));
+
     // Compute which bin this fragment belongs to
     let binX = u32(clamp(floor(uv.x * f32(params.gridX)), 0.0, f32(params.gridX - 1)));
     let binY = u32(clamp(floor(uv.y * f32(params.gridY)), 0.0, f32(params.gridY - 1)));
-    let binIndex = binY * params.gridX + binX;
+    let binIndex = u32(binY * params.gridX + binX);
+
+    let aspect = f32(canvasParams.width) / f32(canvasParams.height);
 
     let count = binCounters[binIndex];
     var color = vec3<f32>(0.0);
 
+    let r = 0.01; // splat radius in [0..1] screen space
+    let sigma = r * 0.5; // adjust as needed
+
     for (var i = 0u; i < count; i = i + 1u) {
         let v = binVertices[binIndex * params.maxPerBin + i];
 
-        // local fragment coordinates relative to bin (0..1 in bin)
-        let binUV = uv * vec2<f32>(f32(params.gridX), f32(params.gridY)) - vec2<f32>(f32(binX), f32(binY));
+        // Compare fragment in global UV with vertex position in global UV
+        // pos is in normalized clip space [-1,1]
+        // uv is in [0,1]
+        let vUV = (v.pos.xy + vec2<f32>(1.0)) * 0.5;
+        let dx = abs(vUV.x - uv.x);
+        let dy = abs(vUV.y - uv.y);
 
-        let dx = abs(v.pos.x - binUV.x);
-        let dy = abs(v.pos.y - binUV.y);
+        // Scale dx by aspect ratio
+        let dx_corrected = dx * aspect;
 
-        let r = 0.01; // splat radius
-        if (dx < r && dy < r) {
-            color += vec3<f32>(1.0, v.opacity, v.opacity) * v.opacity;
+        let dist2 = dx_corrected * dx_corrected + dy * dy;
+        let weight = exp(-dist2 / (2.0 * sigma * sigma));
+
+        if (dist2 < r * r) {
+            color += vec3<f32>(1.0, 1.0, 1.0) * v.opacity * weight;
+            color = min(color, vec3<f32>(1.0));
+            if (color.x >= 1.0) { break; }
         }
     }
 
     // debug color: vertex count / maxPerBin
-    color = vec3<f32>(f32(count) / f32(params.maxPerBin));
+    // color = vec3<f32>(f32(count) / f32(params.maxPerBin));
 
     return vec4<f32>(color, 1.0);
     // return vec4<f32>(1.0, 0.0, 0.0, 1.0);

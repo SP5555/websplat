@@ -1,6 +1,7 @@
 'use strict';
 
 import Camera from "./camera.js";
+import { MeshBufferBuilder } from "./mesh-buffer-builder.js";
 import WGSLShader from "./wgsl-shader/wgsl-shader.js";
 
 export default class Renderer {
@@ -17,8 +18,8 @@ export default class Renderer {
         this.cameraBuffer = null;
         this.cameraBindGroup = null;
 
-        this.GRID_SIZE = { x: 256, y: 128 };
-        this.MAX_VERTICES_PER_BIN = 64;
+        this.GRID_SIZE = { x: 64, y: 32 };
+        this.MAX_VERTICES_PER_BIN = 512;
 
         this.init();
     }
@@ -32,11 +33,7 @@ export default class Renderer {
             return;
         }
 
-        this.createCameraBuffer();
-        await this.createTransformPipeline();
-        await this.createBinPipeline();
-        // await this.createSortPipeline();
-        await this.createFinalRenderPipeline();
+        await this.initGPUPipeline();
     }
 
     /* ===== ===== GPU Setup ===== ===== */
@@ -60,6 +57,14 @@ export default class Renderer {
         return true;
     }
 
+    async initGPUPipeline() {
+        this.createCameraBuffer();
+        await this.createTransformPipeline();
+        await this.createBinPipeline();
+        // await this.createSortPipeline();
+        await this.createFinalRenderPipeline();
+    }
+
     createCameraBuffer() {
         this.cameraBuffer = this.device.createBuffer({
             label: "Camera Buffer",
@@ -81,7 +86,7 @@ export default class Renderer {
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
             size: 80, // minimum size
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            usage: GPUBufferUsage.STORAGE
         });
 
         this.transformPipeline = this.device.createComputePipeline({
@@ -110,20 +115,22 @@ export default class Renderer {
         this.binVerticesBuffer = this.device.createBuffer({
             label: "Binned Vertices Buffer",
             size: this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * 12 /*floats per vertex*/ * 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            usage: GPUBufferUsage.STORAGE
         });
 
+        // bin counter is reset each frame, requires COPY_DST
         this.binCountersBuffer = this.device.createBuffer({
             label: "Bin Counters Buffer",
             size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per bin
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         // vertex count in the scene, grid sizes and max vertices a bin can hold
+        // COPY_DST for future GRID_SIZE or MAX_VERTICES_PER_BIN changes
         this.binParamsBuffer = this.device.createBuffer({
             label: "Bin Params Buffer",
             size: 4 * 4, // 4x uint32
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         const binParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_BIN]);
@@ -232,6 +239,7 @@ export default class Renderer {
             primitive: { topology: 'triangle-list' }
         });
 
+        // COPY_DST for canvas resize updates
         this.canvasParamsBuffer = this.device.createBuffer({
             label: "Canvas Params Buffer",
             size: 2 * 4, // width and height as uint32
@@ -287,48 +295,17 @@ export default class Renderer {
     /* ===== ===== Mesh Management ===== ===== */
 
     setMeshData(meshData) {
-        const { vertexCount, positions, covariances, opacities } = meshData;
+        const { vertexCount, floatsPerVertex, bufferData } = MeshBufferBuilder.build(meshData);
         this.vertexCount = vertexCount;
-
-        // 3 pos + 1 opacity + 6 cov + 2 pad
-        const floatsPerVertex = 12;
-        const bufferData = new Float32Array(this.vertexCount * floatsPerVertex);
-
-        // Layout per vertex:
-        // [ px, py, pz, ---,
-        //   cxx, cxy, cxz, ---,
-        //   cyy, cyz, czz, ---,
-        //   opacity, ---, ---, --- ]
-        for (let i = 0; i < this.vertexCount; i++) {
-            const baseSrc = i * 3;
-            const baseCov = i * 6;
-            const baseDst = i * floatsPerVertex;
-
-            bufferData[baseDst + 0] = positions[baseSrc + 0];
-            bufferData[baseDst + 1] = positions[baseSrc + 1];
-            bufferData[baseDst + 2] = positions[baseSrc + 2];
-            bufferData[baseDst + 3] = opacities[i]; // padding
-
-            bufferData[baseDst + 4] = covariances[baseCov + 0];
-            bufferData[baseDst + 5] = covariances[baseCov + 1];
-            bufferData[baseDst + 6] = covariances[baseCov + 2];
-            // bufferData[baseDst + 4] = 0.0;
-            // bufferData[baseDst + 5] = 0.0;
-            // bufferData[baseDst + 6] = 0.0;
-            bufferData[baseDst + 7] = 0.0; // padding
-
-            bufferData[baseDst + 8] = covariances[baseCov + 3];
-            bufferData[baseDst + 9] = covariances[baseCov + 4];
-            bufferData[baseDst + 10] = covariances[baseCov + 5];
-            // bufferData[baseDst + 8] = 0.0;
-            // bufferData[baseDst + 9] = 0.0;
-            // bufferData[baseDst + 10] = 0.0;
-            bufferData[baseDst + 11] = 0.0; // padding
-        }
 
         this.reallocateVertexBuffer(bufferData);
 
-        const binParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_BIN]);
+        const binParams = new Uint32Array([
+            vertexCount,
+            this.GRID_SIZE.x,
+            this.GRID_SIZE.y,
+            this.MAX_VERTICES_PER_BIN
+        ]);
 
         // this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
@@ -354,7 +331,7 @@ export default class Renderer {
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
             size: bufferData.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            usage: GPUBufferUsage.STORAGE
         });
 
         this.transformBindGroup = this.device.createBindGroup({
