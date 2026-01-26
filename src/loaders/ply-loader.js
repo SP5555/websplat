@@ -80,6 +80,9 @@ export default class PLYLoader {
         let minX = Infinity, maxX = -Infinity;
         let minY = Infinity, maxY = -Infinity;
         let minZ = Infinity, maxZ = -Infinity;
+        // scale opacities to [0,1]
+        let minOpacity = Infinity;
+        let maxOpacity = -Infinity;
         for (let i = 0; i < vertexCount; i++) {
             const x = positions[i * 3 + 0];
             const y = positions[i * 3 + 1];
@@ -88,6 +91,10 @@ export default class PLYLoader {
             if (x < minX) minX = x; if (x > maxX) maxX = x;
             if (y < minY) minY = y; if (y > maxY) maxY = y;
             if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+
+            const o = opacities[i];
+            if (o < minOpacity) minOpacity = o;
+            if (o > maxOpacity) maxOpacity = o;
         }
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
@@ -120,7 +127,12 @@ export default class PLYLoader {
             positions[i * 3 + 0] = x;
             positions[i * 3 + 1] = y;
             positions[i * 3 + 2] = z;
+
+            // scale opacities to [0,1]
+            const oScaled = (opacities[i] - minOpacity) / (maxOpacity - minOpacity);
+            opacities[i] = oScaled;
         }
+
         return {
             vertexCount,
             positions,

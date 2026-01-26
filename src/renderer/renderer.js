@@ -17,6 +17,9 @@ export default class Renderer {
         this.cameraBuffer = null;
         this.cameraBindGroup = null;
 
+        this.GRID_SIZE = { x: 128, y: 64 };
+        this.MAX_VERTICES_PER_BIN = 128;
+
         this.init();
     }
 
@@ -30,8 +33,8 @@ export default class Renderer {
         }
 
         this.createCameraBuffer();
-        // await this.createTransformPipeline();
-        // await this.createBinPipeline();
+        await this.createTransformPipeline();
+        await this.createBinPipeline();
         // await this.createSortPipeline();
         await this.createFinalRenderPipeline();
     }
@@ -71,13 +74,13 @@ export default class Renderer {
 
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
-            size: 80,
+            size: 80, // minimum size
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
-            size: 80,
+            size: 80, // minimum size
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         });
 
@@ -104,18 +107,15 @@ export default class Renderer {
         const shader = new WGSLShader(this.device, './shaders/bin.wgsl');
         await shader.load();
 
-        const GRID_SIZE = { x: 8, y: 8 };
-        const MAX_POINTS_PER_BIN = 1024;
-
         this.binVerticesBuffer = this.device.createBuffer({
             label: "Binned Vertices Buffer",
-            size: GRID_SIZE.x * GRID_SIZE.y * MAX_POINTS_PER_BIN * 16 /*floats per vertex*/ * 4,
+            size: this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * 16 /*floats per vertex*/ * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         });
 
         this.binCountersBuffer = this.device.createBuffer({
             label: "Bin Counters Buffer",
-            size: GRID_SIZE.x * GRID_SIZE.y * 4, // 1x uint32 per bin
+            size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per bin
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
 
@@ -123,10 +123,10 @@ export default class Renderer {
         this.binParamsBuffer = this.device.createBuffer({
             label: "Bin Params Buffer",
             size: 4 * 4, // 4x uint32
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
 
-        const binParams = new Uint32Array([this.vertexCount, GRID_SIZE.x, GRID_SIZE.y, MAX_POINTS_PER_BIN]);
+        const binParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_BIN]);
         this.device.queue.writeBuffer(this.binParamsBuffer, 0, binParams.buffer);
 
         this.binPipeline = this.device.createComputePipeline({
@@ -172,75 +172,85 @@ export default class Renderer {
         });
     }
 
-    async createFinalRenderPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/basic-shader.wgsl');
-        await shader.load();
-
-        this.finalRenderPipeline = this.device.createRenderPipeline({
-            label: "Render Pipeline",
-            layout: 'auto',
-            vertex: {
-                module: shader.getModule(),
-                entryPoint: 'vs_main',
-                buffers: [{
-                    arrayStride: 16 * 4, // 16 floats per vertex
-                    attributes: [
-                        { shaderLocation: 0, format: 'float32x4', offset: 0 },     // position
-                        { shaderLocation: 1, format: 'float32x4', offset: 4 * 4 }, // covariance part 1
-                        { shaderLocation: 2, format: 'float32x4', offset: 8 * 4 }, // covariance part 2
-                        { shaderLocation: 3, format: 'float32', offset: 12 * 4 }   // opacity
-                    ]
-                }]
-            },
-            fragment: {
-                module: shader.getModule(),
-                entryPoint: 'fs_main',
-                targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
-            },
-            primitive: { topology: 'point-list' }
-        });
-
-        this.cameraBindGroup = this.device.createBindGroup({
-            layout: this.finalRenderPipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: this.cameraBuffer } }]
-        });
-
-        this.vertexBuffer = this.device.createBuffer({
-            label: "Vertex Buffer",
-            size: 0,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
-        });
-    }
-
     // async createFinalRenderPipeline() {
-    //     const shader = new WGSLShader(this.device, './shaders/final-render.wgsl');
+    //     const shader = new WGSLShader(this.device, './shaders/basic-shader.wgsl');
     //     await shader.load();
 
     //     this.finalRenderPipeline = this.device.createRenderPipeline({
-    //         label: "Final Render Pipeline",
+    //         label: "Render Pipeline",
     //         layout: 'auto',
     //         vertex: {
     //             module: shader.getModule(),
     //             entryPoint: 'vs_main',
-    //             buffers: [] // fullscreen triangle
+    //             buffers: [{
+    //                 arrayStride: 16 * 4, // 16 floats per vertex
+    //                 attributes: [
+    //                     { shaderLocation: 0, format: 'float32x4', offset: 0 },     // position
+    //                     { shaderLocation: 1, format: 'float32x4', offset: 4 * 4 }, // covariance part 1
+    //                     { shaderLocation: 2, format: 'float32x4', offset: 8 * 4 }, // covariance part 2
+    //                     { shaderLocation: 3, format: 'float32', offset: 12 * 4 }   // opacity
+    //                 ]
+    //             }]
     //         },
     //         fragment: {
     //             module: shader.getModule(),
     //             entryPoint: 'fs_main',
     //             targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
     //         },
-    //         primitive: { topology: 'triangle-list' }
+    //         primitive: { topology: 'point-list' }
     //     });
 
-    //     this.finalRenderBindGroup = this.device.createBindGroup({
+    //     this.cameraBindGroup = this.device.createBindGroup({
     //         layout: this.finalRenderPipeline.getBindGroupLayout(0),
-    //         entries: [
-    //             { binding: 0, resource: { buffer: this.binVerticesBuffer } },
-    //             { binding: 1, resource: { buffer: this.binCountersBuffer } },
-    //             { binding: 2, resource: { buffer: this.binParamsBuffer } }
-    //         ]
+    //         entries: [{ binding: 0, resource: { buffer: this.cameraBuffer } }]
+    //     });
+
+    //     this.vertexBuffer = this.device.createBuffer({
+    //         label: "Vertex Buffer",
+    //         size: 0,
+    //         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
     //     });
     // }
+
+    async createFinalRenderPipeline() {
+        const shader = new WGSLShader(this.device, './shaders/final-render.wgsl');
+        await shader.load();
+
+        this.finalRenderPipeline = this.device.createRenderPipeline({
+            label: "Final Render Pipeline",
+            layout: 'auto',
+            vertex: {
+                module: shader.getModule(),
+                entryPoint: 'vs_main',
+                buffers: [] // fullscreen triangle
+            },
+            fragment: {
+                module: shader.getModule(),
+                entryPoint: 'fs_main',
+                targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
+            },
+            primitive: { topology: 'triangle-list' }
+        });
+
+        this.canvasParamsBuffer = this.device.createBuffer({
+            label: "Canvas Params Buffer",
+            size: 2 * 4, // width and height as uint32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
+        this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
+
+        this.finalRenderBindGroup = this.device.createBindGroup({
+            layout: this.finalRenderPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.binVerticesBuffer } },
+                { binding: 1, resource: { buffer: this.binCountersBuffer } },
+                { binding: 2, resource: { buffer: this.binParamsBuffer } },
+                { binding: 3, resource: { buffer: this.canvasParamsBuffer } }
+            ]
+        });
+    }
 
     configureContext() {
         if (!this.device || !this.context) return;
@@ -266,6 +276,12 @@ export default class Renderer {
     resizeCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+
+        this.device?.queue.writeBuffer(
+            this.canvasParamsBuffer,
+            0,
+            new Uint32Array([this.canvas.width, this.canvas.height]).buffer
+        );
     }
 
     /* ===== ===== Mesh Management ===== ===== */
@@ -291,85 +307,114 @@ export default class Renderer {
             bufferData[baseDst + 0] = positions[baseSrc + 0];
             bufferData[baseDst + 1] = positions[baseSrc + 1];
             bufferData[baseDst + 2] = positions[baseSrc + 2];
+            bufferData[baseDst + 3] = 0.0; // padding
 
             bufferData[baseDst + 4] = covariances[baseCov + 0];
             bufferData[baseDst + 5] = covariances[baseCov + 1];
             bufferData[baseDst + 6] = covariances[baseCov + 2];
+            bufferData[baseDst + 7] = 0.0; // padding
 
             bufferData[baseDst + 8] = covariances[baseCov + 3];
             bufferData[baseDst + 9] = covariances[baseCov + 4];
             bufferData[baseDst + 10] = covariances[baseCov + 5];
+            bufferData[baseDst + 11] = 0.0; // padding
 
             bufferData[baseDst + 12] = opacities[i];
+            bufferData[baseDst + 13] = 0.0; // padding
+            bufferData[baseDst + 14] = 0.0; // padding
+            bufferData[baseDst + 15] = 0.0; // padding
         }
 
-        this.reallocateVertexBuffer(bufferData.byteLength);
-        this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData);
-        // this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData);
+        this.reallocateVertexBuffer(bufferData.byteLength, bufferData);
+
+        const binParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_BIN]);
+        this.device.queue.writeBuffer(this.binParamsBuffer, 0, binParams.buffer);
     }
 
-    reallocateVertexBuffer(size) {
+    reallocateVertexBuffer(size, bufferData) {
         if (this.vertexBuffer) this.vertexBuffer.destroy();
         this.vertexBuffer = this.device.createBuffer({
             label: "Vertex Buffer",
             size: size,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
+        this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData);
 
-        // if (this.transformInputBuffer) this.transformInputBuffer.destroy();
-        // this.transformInputBuffer = this.device.createBuffer({
-        //     label: "Transform Input Buffer",
-        //     size: size,
-        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        // });
+        if (this.transformInputBuffer) this.transformInputBuffer.destroy();
+        this.transformInputBuffer = this.device.createBuffer({
+            label: "Transform Input Buffer",
+            size: size,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
 
-        // if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
-        // this.transformOutputBuffer = this.device.createBuffer({
-        //     label: "Transform Output Buffer",
-        //     size: size,
-        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        // });
+        if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
+        this.transformOutputBuffer = this.device.createBuffer({
+            label: "Transform Output Buffer",
+            size: size,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        });
+
+        this.transformBindGroup = this.device.createBindGroup({
+            layout: this.transformPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.cameraBuffer } },
+                { binding: 1, resource: { buffer: this.transformInputBuffer } },
+                { binding: 2, resource: { buffer: this.transformOutputBuffer } }
+            ]
+        });
+        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData);
+
+        this.binBindGroup = this.device.createBindGroup({
+            layout: this.binPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 1, resource: { buffer: this.binVerticesBuffer } },
+                { binding: 2, resource: { buffer: this.binCountersBuffer } },
+                { binding: 3, resource: { buffer: this.binParamsBuffer } }
+            ]
+        });
     }
 
     /* ===== ===== Rendering ===== ===== */
 
-    render(dt) {
+    async render(dt) {
         if (!this.device || !this.context || !this.finalRenderPipeline) return;
 
         this.updateCameraBuffer(dt);
 
-        const encoder = this.device.createCommandEncoder();
+        this.device.queue.writeBuffer(this.binCountersBuffer, 0, new Uint32Array(this.binCountersBuffer.size / 4).fill(0).buffer);
         
-        // // Pass 1: Transform Compute Pass
-        // {
-        //     const pass = encoder.beginComputePass();
-        //     pass.setPipeline(this.transformPipeline);
-        //     pass.setBindGroup(0, this.transformBindGroup);
-        //     const workgroupSize = 64;
-        //     const numWorkgroups = Math.min(16, Math.ceil(this.vertexCount / workgroupSize));
-        //     pass.dispatchWorkgroups(numWorkgroups);
-        //     pass.end();
-        // }
+        const encoder = this.device.createCommandEncoder();
 
-        // // Pass 2: Binning Pass
-        // {
-        //     const pass = encoder.beginComputePass();
-        //     pass.setPipeline(this.binPipeline);
-        //     pass.setBindGroup(0, this.binBindGroup);
-        //     const workgroupSize = 64;
-        //     const numWorkgroups = Math.min(16, Math.ceil(this.vertexCount / workgroupSize));
-        //     pass.dispatchWorkgroups(numWorkgroups);
-        //     pass.end();
-        // }
+        // Pass 1: Transform Compute Pass
+        {
+            const pass = encoder.beginComputePass();
+            pass.setPipeline(this.transformPipeline);
+            pass.setBindGroup(0, this.transformBindGroup);
+            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / 64));
+            pass.dispatchWorkgroups(numWorkgroups);
+            pass.end();
+        }
 
-        // // Pass 3: Sorting Pass
+        // Pass 2: Binning Pass
+        {
+            const pass = encoder.beginComputePass();
+            pass.setPipeline(this.binPipeline);
+            pass.setBindGroup(0, this.binBindGroup);
+            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / 64));
+            pass.dispatchWorkgroups(numWorkgroups);
+            pass.end();
+        }
+
+        // Pass 3: Sorting Pass
         // {
+
         //     const pass = encoder.beginComputePass();
         //     pass.setPipeline(this.sortPipeline);
         //     pass.setBindGroup(0, this.sortBindGroup);
-        //     const GRID_SIZE = { x: 8, y: 8 };
-        //     pass.dispatchWorkgroups(GRID_SIZE.x * GRID_SIZE.y);
+        //     pass.dispatchWorkgroups(this.GRID_SIZE.x * this.GRID_SIZE.y);
         //     pass.end();
+
         // }
 
         // Pass 4: Final Render Pass
@@ -383,13 +428,14 @@ export default class Renderer {
                 }]
             });
             pass.setPipeline(this.finalRenderPipeline);
-            pass.setBindGroup(0, this.cameraBindGroup);
-            pass.setVertexBuffer(0, this.vertexBuffer);
-            if (this.vertexCount) pass.draw(this.vertexCount, 1);
-            // pass.draw(3); // fullscreen triangle
+            // pass.setBindGroup(0, this.cameraBindGroup);
+            // pass.setVertexBuffer(0, this.vertexBuffer);
+            // if (this.vertexCount) pass.draw(this.vertexCount, 1);
+            pass.setBindGroup(0, this.finalRenderBindGroup);
+            pass.draw(3); // fullscreen triangle
             pass.end();
         }
-
+        
         this.device.queue.submit([encoder.finish()]);
     }
 
