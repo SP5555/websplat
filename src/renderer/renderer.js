@@ -403,7 +403,7 @@ export default class Renderer {
             pass.end();
         }
 
-        // Pass 2: Binning Pass
+        // Pass 2: Tiling Pass
         {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.tilePipeline);
