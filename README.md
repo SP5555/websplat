@@ -8,7 +8,7 @@ A fun little 3DGS scene renderer implemented with WebGPU! Don't expect much, I h
 
 1. Clone the repository
 ```bash
-git clone https://github.com/SP5555/3dgs-webgl.git
+git clone https://github.com/SP5555/3dgs-webgpu.git
 cd 3dgs-webgpu
 ```
 
