@@ -22,8 +22,8 @@ struct CanvasParams {
     height : u32,
 };
 
-@group(0) @binding(0) var<storage, read> binVertices : array<Vertex>;
-@group(0) @binding(1) var<storage, read> binCounters : array<u32>;
+@group(0) @binding(0) var<storage, read> tileVertices : array<Vertex>;
+@group(0) @binding(1) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(2) var<storage, read> params : BinParams;
 @group(0) @binding(3) var<uniform> canvasParams : CanvasParams;
 
@@ -45,21 +45,21 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     // Normalize to [0,1] screen coordinates
     let uv = fragCoord.xy / vec2<f32>(f32(canvasParams.width), f32(canvasParams.height));
 
-    // Compute which bin this fragment belongs to
-    let binX = u32(clamp(floor(uv.x * f32(params.gridX)), 0.0, f32(params.gridX - 1)));
-    let binY = u32(clamp(floor(uv.y * f32(params.gridY)), 0.0, f32(params.gridY - 1)));
-    let binIndex = u32(binY * params.gridX + binX);
+    // Compute which tile this fragment belongs to
+    let tileX = u32(clamp(floor(uv.x * f32(params.gridX)), 0.0, f32(params.gridX - 1)));
+    let tileY = u32(clamp(floor(uv.y * f32(params.gridY)), 0.0, f32(params.gridY - 1)));
+    let tileIndex = u32(tileY * params.gridX + tileX);
 
     let aspect = f32(canvasParams.width) / f32(canvasParams.height);
 
-    let count = binCounters[binIndex];
+    let count = tileCounters[tileIndex];
     var color = vec3<f32>(0.0);
 
     let r = 0.01; // splat radius in [0..1] screen space
     let sigma = r * 0.5; // adjust as needed
 
     for (var i = 0u; i < count; i = i + 1u) {
-        let v = binVertices[binIndex * params.maxPerBin + i];
+        let v = tileVertices[tileIndex * params.maxPerBin + i];
 
         // Compare fragment in global UV with vertex position in global UV
         // pos is in normalized clip space [-1,1]
