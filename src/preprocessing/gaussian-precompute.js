@@ -8,7 +8,10 @@ export function GaussianPrecompute(raw) {
 
     const covariances = new Float32Array(vertexCount * 6);
 
-    const R = mat3.create(); // temp rotation matrix
+    const R = mat3.create();
+    const S = mat3.create();
+    const cov = mat3.create();
+
     for (let i = 0; i < vertexCount; i++) {
 
         // unpack scale
@@ -23,39 +26,30 @@ export function GaussianPrecompute(raw) {
             rotations[i*4 + 2],
             rotations[i*4 + 3]
         );
-
         quat.normalize(q, q);
         mat3.fromQuat(R, q);
 
-        // build covariance = R * diag(s^2) * R^T
-        const sxx = sx*sx, syy = sy*sy, szz = sz*sz;
-
-        const r00 = R[0], r01 = R[1], r02 = R[2];
-        const r10 = R[3], r11 = R[4], r12 = R[5];
-        const r20 = R[6], r21 = R[7], r22 = R[8];
-
+        // build covariance = R * S * S^T * R^T
+        S[0] = sx; // x
+        S[4] = sy; // y
+        S[8] = sz; // z
+        // R * S
+        mat3.multiply(cov, R, S);
+        // R * S * S^T * R^T
+        mat3.multiply(cov, cov, mat3.transpose(mat3.create(), cov));
+        
         // Covariance matrix layout:
         // [ cxx cxy cxz ]
         // [ cxy cyy cyz ]
         // [ cxz cyz czz ]
         // note there is only 6 unique entries
-
-        const cxx = r00*r00*sxx + r01*r01*syy + r02*r02*szz;
-        const cxy = r00*r10*sxx + r01*r11*syy + r02*r12*szz;
-        const cxz = r00*r20*sxx + r01*r21*syy + r02*r22*szz;
-
-        const cyy = r10*r10*sxx + r11*r11*syy + r12*r12*szz;
-        const cyz = r10*r20*sxx + r11*r21*syy + r12*r22*szz;
-
-        const czz = r20*r20*sxx + r21*r21*syy + r22*r22*szz;
-
-        const base = i*6;
-        covariances[base + 0] = cxx;
-        covariances[base + 1] = cxy;
-        covariances[base + 2] = cxz;
-        covariances[base + 3] = cyy;
-        covariances[base + 4] = cyz;
-        covariances[base + 5] = czz;
+        const base = i * 6;
+        covariances[base + 0] = cov[0]; // cxx
+        covariances[base + 1] = cov[1]; // cxy
+        covariances[base + 2] = cov[2]; // cxz
+        covariances[base + 3] = cov[4]; // cyy
+        covariances[base + 4] = cov[5]; // cyz
+        covariances[base + 5] = cov[8]; // czz
 
         // ===== FLIP Y AND Z AXES =====
         // Reflect * C * Reflect^T where Reflect = diag(1, -1, -1)
