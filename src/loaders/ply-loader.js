@@ -3,9 +3,19 @@
 import { EVENTS } from "../utils/event.js";
 import { eventBus } from "../utils/event-emitters.js";
 
+const C0 = 0.28209;
+
 export default class PLYLoader {
     constructor() {
         // hmm
+    }
+
+    expf(x) {
+        return Math.exp(x);
+    }
+
+    sigmoid(x) {
+        return 1 / (1 + this.expf(-x));
     }
 
     async load(file) {
@@ -83,18 +93,11 @@ export default class PLYLoader {
 
             opacities[i] = dataView.getFloat32(baseOffset + idx.opacity * floatSize, true);
         }
-        
-        // print color range
-        let minR = Infinity, maxR = -Infinity;
-        let minG = Infinity, maxG = -Infinity;
-        let minB = Infinity, maxB = -Infinity;
+
         // normalize positions between -1 and 1
         let minX = Infinity, maxX = -Infinity;
         let minY = Infinity, maxY = -Infinity;
         let minZ = Infinity, maxZ = -Infinity;
-        // scale opacities to [0,1]
-        let minOpacity = Infinity;
-        let maxOpacity = -Infinity;
         for (let i = 0; i < vertexCount; i++) {
             const x = positions[i * 3 + 0];
             const y = positions[i * 3 + 1];
@@ -103,17 +106,6 @@ export default class PLYLoader {
             if (x < minX) minX = x; if (x > maxX) maxX = x;
             if (y < minY) minY = y; if (y > maxY) maxY = y;
             if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-
-            const o = opacities[i];
-            if (o < minOpacity) minOpacity = o;
-            if (o > maxOpacity) maxOpacity = o;
-
-            const r = colors[i * 3 + 0];
-            const g = colors[i * 3 + 1];
-            const b = colors[i * 3 + 2];
-            if (r < minR) minR = r; if (r > maxR) maxR = r;
-            if (g < minG) minG = g; if (g > maxG) maxG = g;
-            if (b < minB) minB = b; if (b > maxB) maxB = b;
         }
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
@@ -142,22 +134,23 @@ export default class PLYLoader {
             y *= scale;
             z *= scale;
 
+            // apply expf and scale
+            scales[i * 3 + 0] = this.expf(scales[i * 3 + 0]) * scale;
+            scales[i * 3 + 1] = this.expf(scales[i * 3 + 1]) * scale;
+            scales[i * 3 + 2] = this.expf(scales[i * 3 + 2]) * scale;
+
             // y and z flip
             positions[i * 3 + 0] = x;
             positions[i * 3 + 1] = y;
             positions[i * 3 + 2] = z;
 
-            // scale opacities to [0,1]
-            const oScaled = (opacities[i] - minOpacity) / (maxOpacity - minOpacity);
-            opacities[i] = oScaled;
+            // apply sigmoid to opacities
+            opacities[i] = this.sigmoid(opacities[i]);
 
             // normalize colors to [0,1]
-            const r = colors[i * 3 + 0];
-            const g = colors[i * 3 + 1];
-            const b = colors[i * 3 + 2];
-            colors[i * 3 + 0] = (r - minR) / (maxR - minR);
-            colors[i * 3 + 1] = (g - minG) / (maxG - minG);
-            colors[i * 3 + 2] = (b - minB) / (maxB - minB);
+            colors[i * 3 + 0] = colors[i * 3 + 0] * C0 + 0.5;
+            colors[i * 3 + 1] = colors[i * 3 + 1] * C0 + 0.5;
+            colors[i * 3 + 2] = colors[i * 3 + 2] * C0 + 0.5;
         }
 
         return {
