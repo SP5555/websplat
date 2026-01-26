@@ -20,7 +20,7 @@ export default class Renderer {
         this.cameraBindGroup = null;
 
         this.GRID_SIZE = { x: 32, y: 16 };
-        this.MAX_VERTICES_PER_BIN = 2048;
+        this.MAX_VERTICES_PER_TILE = 2048;
 
         this.init();
     }
@@ -61,7 +61,7 @@ export default class Renderer {
     async initGPUPipeline() {
         this.createCameraBuffer();
         await this.createTransformPipeline();
-        await this.createBinPipeline();
+        await this.createTilePipeline();
         // await this.createSortPipeline();
         await this.createFinalRenderPipeline();
     }
@@ -109,36 +109,36 @@ export default class Renderer {
         });
     }
 
-    async createBinPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/bin.wgsl');
+    async createTilePipeline() {
+        const shader = new WGSLShader(this.device, './shaders/tile.wgsl');
         await shader.load();
 
-        this.binVerticesBuffer = this.device.createBuffer({
-            label: "Binned Vertices Buffer",
-            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * this.floatsPerVertex * 4),
+        this.tileVerticesBuffer = this.device.createBuffer({
+            label: "Tile Vertices Buffer",
+            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * this.floatsPerVertex * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
         // bin counter is reset each frame, requires COPY_DST
-        this.binCountersBuffer = this.device.createBuffer({
-            label: "Bin Counters Buffer",
-            size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per bin
+        this.tileCountersBuffer = this.device.createBuffer({
+            label: "Tile Counters Buffer",
+            size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per tile
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
-        // vertex count in the scene, grid sizes and max vertices a bin can hold
-        // COPY_DST for future GRID_SIZE or MAX_VERTICES_PER_BIN changes
-        this.binParamsBuffer = this.device.createBuffer({
-            label: "Bin Params Buffer",
+        // vertex count in the scene, grid sizes and max vertices a tile can hold
+        // COPY_DST for future GRID_SIZE or MAX_VERTICES_PER_TILE changes
+        this.tileParamsBuffer = this.device.createBuffer({
+            label: "Tile Params Buffer",
             size: 4 * 4, // 4x uint32
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
-        const binParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_BIN]);
-        this.device.queue.writeBuffer(this.binParamsBuffer, 0, binParams.buffer);
+        const tileParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_TILE]);
+        this.device.queue.writeBuffer(this.tileParamsBuffer, 0, tileParams.buffer);
 
-        this.binPipeline = this.device.createComputePipeline({
-            label: "Bin Pipeline",
+        this.tilePipeline = this.device.createComputePipeline({
+            label: "Tile Pipeline",
             layout: 'auto',
             compute: {
                 module: shader.getModule(),
@@ -146,13 +146,13 @@ export default class Renderer {
             }
         });
 
-        this.binBindGroup = this.device.createBindGroup({
-            layout: this.binPipeline.getBindGroupLayout(0),
+        this.tileBindGroup = this.device.createBindGroup({
+            layout: this.tilePipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 1, resource: { buffer: this.binVerticesBuffer } },
-                { binding: 2, resource: { buffer: this.binCountersBuffer } },
-                { binding: 3, resource: { buffer: this.binParamsBuffer } }
+                { binding: 1, resource: { buffer: this.tileVerticesBuffer } },
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.tileParamsBuffer } }
             ]
         });
     }
@@ -173,9 +173,9 @@ export default class Renderer {
         this.sortBindGroup = this.device.createBindGroup({
             layout: this.sortPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.binVerticesBuffer } },
-                { binding: 1, resource: { buffer: this.binCountersBuffer } },
-                { binding: 2, resource: { buffer: this.binParamsBuffer } }
+                { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 2, resource: { buffer: this.tileParamsBuffer } }
             ]
         });
     }
@@ -254,9 +254,9 @@ export default class Renderer {
         this.finalRenderBindGroup = this.device.createBindGroup({
             layout: this.finalRenderPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.binVerticesBuffer } },
-                { binding: 1, resource: { buffer: this.binCountersBuffer } },
-                { binding: 2, resource: { buffer: this.binParamsBuffer } },
+                { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 2, resource: { buffer: this.tileParamsBuffer } },
                 { binding: 3, resource: { buffer: this.canvasParamsBuffer } }
             ]
         });
@@ -303,16 +303,16 @@ export default class Renderer {
 
         this.reallocateVertexBuffer(bufferData);
 
-        const binParams = new Uint32Array([
+        const tileParams = new Uint32Array([
             vertexCount,
             this.GRID_SIZE.x,
             this.GRID_SIZE.y,
-            this.MAX_VERTICES_PER_BIN
+            this.MAX_VERTICES_PER_TILE
         ]);
 
         // this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
-        this.device.queue.writeBuffer(this.binParamsBuffer, 0, binParams.buffer);
+        this.device.queue.writeBuffer(this.tileParamsBuffer, 0, tileParams.buffer);
     }
 
     reallocateVertexBuffer(bufferData) {
@@ -337,10 +337,10 @@ export default class Renderer {
             usage: GPUBufferUsage.STORAGE
         });
 
-        if (this.binVerticesBuffer) this.binVerticesBuffer.destroy();
-        this.binVerticesBuffer = this.device.createBuffer({
-            label: "Binned Vertices Buffer",
-            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * this.floatsPerVertex * 4),
+        if (this.tileVerticesBuffer) this.tileVerticesBuffer.destroy();
+        this.tileVerticesBuffer = this.device.createBuffer({
+            label: "Tile Vertices Buffer",
+            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * this.floatsPerVertex * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -353,31 +353,31 @@ export default class Renderer {
             ]
         });
 
-        this.binBindGroup = this.device.createBindGroup({
-            layout: this.binPipeline.getBindGroupLayout(0),
+        this.tileBindGroup = this.device.createBindGroup({
+            layout: this.tilePipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 1, resource: { buffer: this.binVerticesBuffer } },
-                { binding: 2, resource: { buffer: this.binCountersBuffer } },
-                { binding: 3, resource: { buffer: this.binParamsBuffer } }
+                { binding: 1, resource: { buffer: this.tileVerticesBuffer } },
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.tileParamsBuffer } }
             ]
         });
 
         // this.sortBindGroup = this.device.createBindGroup({
         //     layout: this.sortPipeline.getBindGroupLayout(0),
         //     entries: [
-        //         { binding: 0, resource: { buffer: this.binVerticesBuffer } },
-        //         { binding: 1, resource: { buffer: this.binCountersBuffer } },
-        //         { binding: 2, resource: { buffer: this.binParamsBuffer } }
+        //         { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
+        //         { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+        //         { binding: 2, resource: { buffer: this.tileParamsBuffer } }
         //     ]
         // });
 
         this.finalRenderBindGroup = this.device.createBindGroup({
             layout: this.finalRenderPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.binVerticesBuffer } },
-                { binding: 1, resource: { buffer: this.binCountersBuffer } },
-                { binding: 2, resource: { buffer: this.binParamsBuffer } },
+                { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 2, resource: { buffer: this.tileParamsBuffer } },
                 { binding: 3, resource: { buffer: this.canvasParamsBuffer } }
             ]
         });
@@ -389,7 +389,7 @@ export default class Renderer {
 
         this.updateCameraBuffer(dt);
 
-        this.device.queue.writeBuffer(this.binCountersBuffer, 0, new Uint32Array(this.binCountersBuffer.size / 4).fill(0).buffer);
+        this.device.queue.writeBuffer(this.tileCountersBuffer, 0, new Uint32Array(this.tileCountersBuffer.size / 4).fill(0).buffer);
         
         const encoder = this.device.createCommandEncoder();
 
@@ -406,8 +406,8 @@ export default class Renderer {
         // Pass 2: Binning Pass
         {
             const pass = encoder.beginComputePass();
-            pass.setPipeline(this.binPipeline);
-            pass.setBindGroup(0, this.binBindGroup);
+            pass.setPipeline(this.tilePipeline);
+            pass.setBindGroup(0, this.tileBindGroup);
             const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / 64));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
