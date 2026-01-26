@@ -23,11 +23,6 @@ fn computeBinIndex(pos : vec4<f32>) -> i32 {
     let xF = ((pos.x + 1.0) * 0.5) * f32(params.gridX);
     let yF = ((pos.y + 1.0) * 0.5) * f32(params.gridY);
 
-    // If out of bounds, return -1 as a sentinel
-    if (xF < 0.0 || xF >= f32(params.gridX) || yF < 0.0 || yF >= f32(params.gridY)) {
-        return -1;
-    }
-
     return i32(yF) * i32(params.gridX) + i32(xF);
 }
 
@@ -37,8 +32,17 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (i >= params.vertexCount) { return; }
 
     let v = vertices[i];
+
+    // clip space lies -1<Z<1
+    if (v.pos.z < -1.0 || v.pos.z > 1.0) {
+        return;
+    }
+    // out of clip space bounds
+    if (v.pos.x < -1.0 || v.pos.x >= 1.0 || v.pos.y < -1.0 || v.pos.y >= 1.0) {
+        return;
+    }
+
     let binIndex = computeBinIndex(v.pos);
-    if (binIndex < 0) { return; } // discard vertex outside grid
 
     let offset = atomicAdd(&binCounters[binIndex], 1u);
     if (offset < params.maxPerBin) {

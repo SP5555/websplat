@@ -24,6 +24,7 @@ export function GaussianPrecompute(raw) {
             rotations[i*4 + 3]
         );
 
+        quat.normalize(q, q);
         mat3.fromQuat(R, q);
 
         // build covariance = R * diag(s^2) * R^T

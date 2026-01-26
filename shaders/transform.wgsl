@@ -33,5 +33,5 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         t.w // keeping this around
     );
 
-    outVertices[i] = Vertex(vec4<f32>(v.pos.xyz, 1.0), v.cov1, v.cov2, v.opacity, v._pad);
+    outVertices[i] = Vertex(transformedPos, v.cov1, v.cov2, v.opacity, v._pad);
 }

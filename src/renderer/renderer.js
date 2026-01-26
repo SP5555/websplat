@@ -17,8 +17,8 @@ export default class Renderer {
         this.cameraBuffer = null;
         this.cameraBindGroup = null;
 
-        this.GRID_SIZE = { x: 128, y: 64 };
-        this.MAX_VERTICES_PER_BIN = 128;
+        this.GRID_SIZE = { x: 512, y: 256 };
+        this.MAX_VERTICES_PER_BIN = 8;
 
         this.init();
     }
@@ -290,16 +290,22 @@ export default class Renderer {
         const { vertexCount, positions, covariances, opacities } = meshData;
         this.vertexCount = vertexCount;
 
+        // print first 5 positions for debugging
+        console.log("First 5 positions:");
+        for (let i = 0; i < Math.min(10, this.vertexCount); i++) {
+            console.log(`Vertex ${i}: (${positions[i*3 + 0]}, ${positions[i*3 + 1]}, ${positions[i*3 + 2]})`);
+        }
+
         // 3 pos + 1 pad + 6 cov + 2 pad + 1 opacity + 3 pad
         const floatsPerVertex = 16;
-        const bufferData = new Float32Array(vertexCount * floatsPerVertex);
+        const bufferData = new Float32Array(this.vertexCount * floatsPerVertex);
 
         // Layout per vertex:
         // [ px, py, pz, ---,
         //   cxx, cxy, cxz, ---,
         //   cyy, cyz, czz, ---,
         //   opacity, ---, ---, --- ]
-        for (let i = 0; i < vertexCount; i++) {
+        for (let i = 0; i < this.vertexCount; i++) {
             const baseSrc = i * 3;
             const baseCov = i * 6;
             const baseDst = i * floatsPerVertex;
