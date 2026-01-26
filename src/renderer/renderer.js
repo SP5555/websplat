@@ -18,8 +18,8 @@ export default class Renderer {
         this.cameraBuffer = null;
         this.cameraBindGroup = null;
 
-        this.GRID_SIZE = { x: 64, y: 32 };
-        this.MAX_VERTICES_PER_BIN = 512;
+        this.GRID_SIZE = { x: 128, y: 64 };
+        this.MAX_VERTICES_PER_BIN = 128;
 
         this.init();
     }

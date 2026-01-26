@@ -17,12 +17,8 @@ struct BinParams {
 @group(0) @binding(2) var<storage, read_write> binCounters : array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read> params : BinParams;
 
-fn computeBinIndex(pos : vec3<f32>) -> i32 {
-    // pos.xy in normalized screen space [-1,1]
-    let xF = ((pos.x + 1.0) * 0.5) * f32(params.gridX);
-    let yF = ((pos.y + 1.0) * 0.5) * f32(params.gridY);
-
-    return i32(yF) * i32(params.gridX) + i32(xF);
+fn toIndex(x : i32, y : i32) -> u32 {
+    return u32(y * i32(params.gridX) + x);
 }
 
 @compute @workgroup_size(64)
@@ -37,10 +33,61 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    let binIndex = computeBinIndex(v.pos);
+    // compute bin coordinates as floats
+    let xF = ((v.pos.x + 1.0) * 0.5) * f32(params.gridX);
+    let yF = ((v.pos.y + 1.0) * 0.5) * f32(params.gridY);
 
-    let offset = atomicAdd(&binCounters[binIndex], 1u);
-    if (offset < params.maxPerBin) {
-        binVertices[u32(binIndex) * params.maxPerBin + offset] = v;
+    // integer bin coordinates
+    let binX0 = i32(floor(xF));
+    let binY0 = i32(floor(yF));
+
+    if (binX0 >= 0 && binX0 < i32(params.gridX) &&
+        binY0 >= 0 && binY0 < i32(params.gridY)) {
+        let binIndex = toIndex(binX0, binY0);
+        let count = atomicAdd(&binCounters[binIndex], 1u);
+        if (count < params.maxPerBin) {
+            let offset = binIndex * params.maxPerBin + count;
+            binVertices[offset] = v;
+        }
     }
+
+    // feel free to comment out down here
+
+    // vertical neighbor
+    let dy = yF - f32(binY0);
+    var verticalY = binY0 + 1;
+    if (dy < 0.5) { verticalY = binY0 - 1; };
+    if (verticalY >= 0 && verticalY < i32(params.gridY)) {
+        let binIndex = toIndex(binX0, verticalY);
+        let count = atomicAdd(&binCounters[binIndex], 1u);
+        if (count < params.maxPerBin) {
+            let offset = binIndex * params.maxPerBin + count;
+            binVertices[offset] = v;
+        }
+    }
+
+    // horizontal neighbor
+    let dx = xF - f32(binX0);
+    var horizontalX = binX0 + 1;
+    if (dx < 0.5) { horizontalX = binX0 - 1; };
+    if (horizontalX >= 0 && horizontalX < i32(params.gridX)) {
+        let binIndex = toIndex(horizontalX, binY0);
+        let count = atomicAdd(&binCounters[binIndex], 1u);
+        if (count < params.maxPerBin) {
+            let offset = binIndex * params.maxPerBin + count;
+            binVertices[offset] = v;
+        }
+    }
+
+    // diagonal neighbor
+    if (verticalY >= 0 && verticalY < i32(params.gridY) &&
+        horizontalX >= 0 && horizontalX < i32(params.gridX)) {
+        let binIndex = toIndex(horizontalX, verticalY);
+        let count = atomicAdd(&binCounters[binIndex], 1u);
+        if (count < params.maxPerBin) {
+            let offset = binIndex * params.maxPerBin + count;
+            binVertices[offset] = v;
+        }
+    }
+
 }
