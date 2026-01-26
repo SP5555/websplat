@@ -1,11 +1,10 @@
 const TILE_SIZE : u32 = 128u;
 
 struct Vertex {
-    pos : vec4<f32>,
-    cov1 : vec4<f32>,
-    cov2 : vec4<f32>,
+    pos : vec3<f32>,
     opacity : f32,
-    _pad : vec3<f32>,
+    cov1 : vec3<f32>,
+    cov2 : vec3<f32>,
 };
 
 struct BinParams {

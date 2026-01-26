@@ -17,8 +17,8 @@ export default class Renderer {
         this.cameraBuffer = null;
         this.cameraBindGroup = null;
 
-        this.GRID_SIZE = { x: 512, y: 256 };
-        this.MAX_VERTICES_PER_BIN = 8;
+        this.GRID_SIZE = { x: 256, y: 128 };
+        this.MAX_VERTICES_PER_BIN = 64;
 
         this.init();
     }
@@ -109,7 +109,7 @@ export default class Renderer {
 
         this.binVerticesBuffer = this.device.createBuffer({
             label: "Binned Vertices Buffer",
-            size: this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * 16 /*floats per vertex*/ * 4,
+            size: this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * 12 /*floats per vertex*/ * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         });
 
@@ -183,7 +183,7 @@ export default class Renderer {
     //             module: shader.getModule(),
     //             entryPoint: 'vs_main',
     //             buffers: [{
-    //                 arrayStride: 16 * 4, // 16 floats per vertex
+    //                 arrayStride: 12 * 4, // 12 floats per vertex
     //                 attributes: [
     //                     { shaderLocation: 0, format: 'float32x4', offset: 0 },     // position
     //                     { shaderLocation: 1, format: 'float32x4', offset: 4 * 4 }, // covariance part 1
@@ -290,14 +290,8 @@ export default class Renderer {
         const { vertexCount, positions, covariances, opacities } = meshData;
         this.vertexCount = vertexCount;
 
-        // print first 5 positions for debugging
-        console.log("First 5 positions:");
-        for (let i = 0; i < Math.min(10, this.vertexCount); i++) {
-            console.log(`Vertex ${i}: (${positions[i*3 + 0]}, ${positions[i*3 + 1]}, ${positions[i*3 + 2]})`);
-        }
-
-        // 3 pos + 1 pad + 6 cov + 2 pad + 1 opacity + 3 pad
-        const floatsPerVertex = 16;
+        // 3 pos + 1 opacity + 6 cov + 2 pad
+        const floatsPerVertex = 12;
         const bufferData = new Float32Array(this.vertexCount * floatsPerVertex);
 
         // Layout per vertex:
@@ -313,50 +307,53 @@ export default class Renderer {
             bufferData[baseDst + 0] = positions[baseSrc + 0];
             bufferData[baseDst + 1] = positions[baseSrc + 1];
             bufferData[baseDst + 2] = positions[baseSrc + 2];
-            bufferData[baseDst + 3] = 0.0; // padding
+            bufferData[baseDst + 3] = opacities[i]; // padding
 
             bufferData[baseDst + 4] = covariances[baseCov + 0];
             bufferData[baseDst + 5] = covariances[baseCov + 1];
             bufferData[baseDst + 6] = covariances[baseCov + 2];
+            // bufferData[baseDst + 4] = 0.0;
+            // bufferData[baseDst + 5] = 0.0;
+            // bufferData[baseDst + 6] = 0.0;
             bufferData[baseDst + 7] = 0.0; // padding
 
             bufferData[baseDst + 8] = covariances[baseCov + 3];
             bufferData[baseDst + 9] = covariances[baseCov + 4];
             bufferData[baseDst + 10] = covariances[baseCov + 5];
+            // bufferData[baseDst + 8] = 0.0;
+            // bufferData[baseDst + 9] = 0.0;
+            // bufferData[baseDst + 10] = 0.0;
             bufferData[baseDst + 11] = 0.0; // padding
-
-            bufferData[baseDst + 12] = opacities[i];
-            bufferData[baseDst + 13] = 0.0; // padding
-            bufferData[baseDst + 14] = 0.0; // padding
-            bufferData[baseDst + 15] = 0.0; // padding
         }
 
-        this.reallocateVertexBuffer(bufferData.byteLength, bufferData);
+        this.reallocateVertexBuffer(bufferData);
 
         const binParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_BIN]);
+
+        // this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData.buffer);
+        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.binParamsBuffer, 0, binParams.buffer);
     }
 
-    reallocateVertexBuffer(size, bufferData) {
-        if (this.vertexBuffer) this.vertexBuffer.destroy();
-        this.vertexBuffer = this.device.createBuffer({
-            label: "Vertex Buffer",
-            size: size,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
-        });
-        this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData);
+    reallocateVertexBuffer(bufferData) {
+        // if (this.vertexBuffer) this.vertexBuffer.destroy();
+        // this.vertexBuffer = this.device.createBuffer({
+        //     label: "Vertex Buffer",
+        //     size: bufferData.byteLength,
+        //     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+        // });
 
         if (this.transformInputBuffer) this.transformInputBuffer.destroy();
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
-            size: size,
+            size: bufferData.byteLength,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
-            size: size,
+            size: bufferData.byteLength,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         });
 
@@ -368,7 +365,6 @@ export default class Renderer {
                 { binding: 2, resource: { buffer: this.transformOutputBuffer } }
             ]
         });
-        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData);
 
         this.binBindGroup = this.device.createBindGroup({
             layout: this.binPipeline.getBindGroupLayout(0),

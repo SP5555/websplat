@@ -6,10 +6,10 @@ struct Camera {
 @group(0) @binding(0) var<uniform> camera : Camera;
 
 struct VertexInput {
-    @location(0) position : vec4<f32>,
-    @location(1) covariance1 : vec4<f32>,
-    @location(2) covariance2 : vec4<f32>,
-    @location(3) opacity : f32
+    @location(0) position : vec3<f32>,
+    @location(1) opacity : f32,
+    @location(2) covariance1 : vec3<f32>,
+    @location(3) covariance2 : vec3<f32>,
 };
 
 struct VertexOutput {

@@ -1,9 +1,8 @@
 struct Vertex {
-    pos : vec4<f32>,    // vec3
-    cov1 : vec4<f32>,   // vec3
-    cov2 : vec4<f32>,   // vec3
+    pos : vec3<f32>,
     opacity : f32,
-    _pad : vec3<f32>,
+    cov1 : vec3<f32>,
+    cov2 : vec3<f32>,
 };
 
 struct BinParams {
@@ -18,7 +17,7 @@ struct BinParams {
 @group(0) @binding(2) var<storage, read_write> binCounters : array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read> params : BinParams;
 
-fn computeBinIndex(pos : vec4<f32>) -> i32 {
+fn computeBinIndex(pos : vec3<f32>) -> i32 {
     // pos.xy in normalized screen space [-1,1]
     let xF = ((pos.x + 1.0) * 0.5) * f32(params.gridX);
     let yF = ((pos.y + 1.0) * 0.5) * f32(params.gridY);
@@ -33,12 +32,8 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     let v = vertices[i];
 
-    // clip space lies -1<Z<1
-    if (v.pos.z < -1.0 || v.pos.z > 1.0) {
-        return;
-    }
-    // out of clip space bounds
-    if (v.pos.x < -1.0 || v.pos.x >= 1.0 || v.pos.y < -1.0 || v.pos.y >= 1.0) {
+    // point outside clip space
+    if (abs(v.pos.z) > 1.0 || abs(v.pos.x) > 1.0 || abs(v.pos.y) > 1.0) {
         return;
     }
 
