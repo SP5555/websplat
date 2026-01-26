@@ -7,6 +7,7 @@ struct Vertex {
     opacity : f32,
     cov1 : vec3<f32>,
     cov2 : vec3<f32>,
+    color : vec3<f32>,
 };
 
 struct BinParams {
@@ -74,9 +75,9 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         let weight = exp(-dist2 / (2.0 * sigma * sigma));
 
         if (dist2 < r * r) {
-            color += vec3<f32>(1.0, 1.0, 1.0) * v.opacity * weight;
+            color += v.color * v.opacity * weight;
             color = min(color, vec3<f32>(1.0));
-            if (color.x >= 1.0) { break; }
+            if (color.x >= 1.0 && color.y >= 1.0 && color.z >= 1.0) { break; }
         }
     }
 

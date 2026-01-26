@@ -8,6 +8,7 @@ struct Vertex {
     opacity : f32,
     cov1 : vec3<f32>,
     cov2 : vec3<f32>,
+    color : vec3<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera : Camera;
@@ -29,5 +30,5 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         t.z / t.w
     );
 
-    outVertices[i] = Vertex(transformedPos, v.opacity, v.cov1, v.cov2);
+    outVertices[i] = Vertex(transformedPos, v.opacity, v.cov1, v.cov2, v.color);
 }

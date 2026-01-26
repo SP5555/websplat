@@ -35,6 +35,7 @@ export default class PLYLoader {
         const positions = new Float32Array(vertexCount * 3);
         const scales = new Float32Array(vertexCount * 3);
         const rotations = new Float32Array(vertexCount * 4);
+        const colors = new Float32Array(vertexCount * 3);
         const opacities = new Float32Array(vertexCount);
 
         const dataView = new DataView(buffer, headerEnd);
@@ -53,6 +54,9 @@ export default class PLYLoader {
             rot1: propertyOrder.indexOf('rot_1'),
             rot2: propertyOrder.indexOf('rot_2'),
             rot3: propertyOrder.indexOf('rot_3'),
+            color0: propertyOrder.indexOf('f_dc_0'),
+            color1: propertyOrder.indexOf('f_dc_1'),
+            color2: propertyOrder.indexOf('f_dc_2'),
             opacity: propertyOrder.indexOf('opacity'),
         }
 
@@ -73,9 +77,17 @@ export default class PLYLoader {
             rotations[i * 4 + 2] = dataView.getFloat32(baseOffset + idx.rot2 * floatSize, true);
             rotations[i * 4 + 3] = dataView.getFloat32(baseOffset + idx.rot3 * floatSize, true);
 
+            colors[i * 3 + 0] = dataView.getFloat32(baseOffset + idx.color0 * floatSize, true);
+            colors[i * 3 + 1] = dataView.getFloat32(baseOffset + idx.color1 * floatSize, true);
+            colors[i * 3 + 2] = dataView.getFloat32(baseOffset + idx.color2 * floatSize, true);
+
             opacities[i] = dataView.getFloat32(baseOffset + idx.opacity * floatSize, true);
         }
-
+        
+        // print color range
+        let minR = Infinity, maxR = -Infinity;
+        let minG = Infinity, maxG = -Infinity;
+        let minB = Infinity, maxB = -Infinity;
         // normalize positions between -1 and 1
         let minX = Infinity, maxX = -Infinity;
         let minY = Infinity, maxY = -Infinity;
@@ -95,6 +107,13 @@ export default class PLYLoader {
             const o = opacities[i];
             if (o < minOpacity) minOpacity = o;
             if (o > maxOpacity) maxOpacity = o;
+
+            const r = colors[i * 3 + 0];
+            const g = colors[i * 3 + 1];
+            const b = colors[i * 3 + 2];
+            if (r < minR) minR = r; if (r > maxR) maxR = r;
+            if (g < minG) minG = g; if (g > maxG) maxG = g;
+            if (b < minB) minB = b; if (b > maxB) maxB = b;
         }
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
@@ -131,6 +150,14 @@ export default class PLYLoader {
             // scale opacities to [0,1]
             const oScaled = (opacities[i] - minOpacity) / (maxOpacity - minOpacity);
             opacities[i] = oScaled;
+
+            // normalize colors to [0,1]
+            const r = colors[i * 3 + 0];
+            const g = colors[i * 3 + 1];
+            const b = colors[i * 3 + 2];
+            colors[i * 3 + 0] = (r - minR) / (maxR - minR);
+            colors[i * 3 + 1] = (g - minG) / (maxG - minG);
+            colors[i * 3 + 2] = (b - minB) / (maxB - minB);
         }
 
         return {
@@ -138,6 +165,7 @@ export default class PLYLoader {
             positions,
             scales,
             rotations,
+            colors,
             opacities
         };
     }

@@ -12,6 +12,7 @@ export default class Renderer {
 
         this.vertexBuffer = null;
         this.vertexCount = 0;
+        this.floatsPerVertex = 0;
         this.finalRenderPipeline = null;
 
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
@@ -114,7 +115,7 @@ export default class Renderer {
 
         this.binVerticesBuffer = this.device.createBuffer({
             label: "Binned Vertices Buffer",
-            size: this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * 12 /*floats per vertex*/ * 4,
+            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * this.floatsPerVertex * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -190,12 +191,13 @@ export default class Renderer {
     //             module: shader.getModule(),
     //             entryPoint: 'vs_main',
     //             buffers: [{
-    //                 arrayStride: 12 * 4, // 12 floats per vertex
+    //                 arrayStride: this.floatsPerVertex * 4,
     //                 attributes: [
     //                     { shaderLocation: 0, format: 'float32x4', offset: 0 },     // position
-    //                     { shaderLocation: 1, format: 'float32x4', offset: 4 * 4 }, // covariance part 1
-    //                     { shaderLocation: 2, format: 'float32x4', offset: 8 * 4 }, // covariance part 2
-    //                     { shaderLocation: 3, format: 'float32', offset: 12 * 4 }   // opacity
+    //                     { shaderLocation: 1, format: 'float32', offset: 3 * 4 },   // opacity
+    //                     { shaderLocation: 2, format: 'float32x4', offset: 4 * 4 }, // covariance part 1
+    //                     { shaderLocation: 3, format: 'float32x4', offset: 8 * 4 }, // covariance part 2
+    //                     { shaderLocation: 4, format: 'float32x3', offset: 12 * 4 } // color
     //                 ]
     //             }]
     //         },
@@ -297,6 +299,7 @@ export default class Renderer {
     setMeshData(meshData) {
         const { vertexCount, floatsPerVertex, bufferData } = MeshBufferBuilder.build(meshData);
         this.vertexCount = vertexCount;
+        this.floatsPerVertex = floatsPerVertex;
 
         this.reallocateVertexBuffer(bufferData);
 
@@ -334,6 +337,13 @@ export default class Renderer {
             usage: GPUBufferUsage.STORAGE
         });
 
+        if (this.binVerticesBuffer) this.binVerticesBuffer.destroy();
+        this.binVerticesBuffer = this.device.createBuffer({
+            label: "Binned Vertices Buffer",
+            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_BIN * this.floatsPerVertex * 4),
+            usage: GPUBufferUsage.STORAGE
+        });
+
         this.transformBindGroup = this.device.createBindGroup({
             layout: this.transformPipeline.getBindGroupLayout(0),
             entries: [
@@ -352,8 +362,26 @@ export default class Renderer {
                 { binding: 3, resource: { buffer: this.binParamsBuffer } }
             ]
         });
-    }
 
+        // this.sortBindGroup = this.device.createBindGroup({
+        //     layout: this.sortPipeline.getBindGroupLayout(0),
+        //     entries: [
+        //         { binding: 0, resource: { buffer: this.binVerticesBuffer } },
+        //         { binding: 1, resource: { buffer: this.binCountersBuffer } },
+        //         { binding: 2, resource: { buffer: this.binParamsBuffer } }
+        //     ]
+        // });
+
+        this.finalRenderBindGroup = this.device.createBindGroup({
+            layout: this.finalRenderPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.binVerticesBuffer } },
+                { binding: 1, resource: { buffer: this.binCountersBuffer } },
+                { binding: 2, resource: { buffer: this.binParamsBuffer } },
+                { binding: 3, resource: { buffer: this.canvasParamsBuffer } }
+            ]
+        });
+    }
     /* ===== ===== Rendering ===== ===== */
 
     async render(dt) {

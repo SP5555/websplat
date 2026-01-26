@@ -4,7 +4,7 @@ import { quat, mat3 } from 'gl-matrix';
 
 export function GaussianPrecompute(raw) {
     // positions, scales, rotations, opacities are Float32Arrays
-    const { vertexCount, positions, scales, rotations, opacities } = raw;
+    const { vertexCount, positions, scales, rotations, colors, opacities } = raw;
 
     const covariances = new Float32Array(vertexCount * 6);
 
@@ -76,6 +76,7 @@ export function GaussianPrecompute(raw) {
         vertexCount,
         positions,
         covariances,
+        colors,
         opacities
     };
 }

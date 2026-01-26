@@ -10,6 +10,7 @@ struct VertexInput {
     @location(1) opacity : f32,
     @location(2) covariance1 : vec3<f32>,
     @location(3) covariance2 : vec3<f32>,
+    @location(4) color : vec3<f32>,
 };
 
 struct VertexOutput {

@@ -5,6 +5,7 @@ struct Vertex {
     opacity : f32,
     cov1 : vec3<f32>,
     cov2 : vec3<f32>,
+    color : vec3<f32>,
 };
 
 struct BinParams {
