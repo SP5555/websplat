@@ -182,47 +182,6 @@ export default class Renderer {
         });
     }
 
-    // async createFinalRenderPipeline() {
-    //     const shader = new WGSLShader(this.device, './shaders/basic-shader.wgsl');
-    //     await shader.load();
-
-    //     this.finalRenderPipeline = this.device.createRenderPipeline({
-    //         label: "Render Pipeline",
-    //         layout: 'auto',
-    //         vertex: {
-    //             module: shader.getModule(),
-    //             entryPoint: 'vs_main',
-    //             buffers: [{
-    //                 arrayStride: this.floatsPerVertex * 4,
-    //                 attributes: [
-    //                     { shaderLocation: 0, format: 'float32x4', offset: 0 },     // position
-    //                     { shaderLocation: 1, format: 'float32', offset: 3 * 4 },   // opacity
-    //                     { shaderLocation: 2, format: 'float32x4', offset: 4 * 4 }, // covariance part 1
-    //                     { shaderLocation: 3, format: 'float32x4', offset: 8 * 4 }, // covariance part 2
-    //                     { shaderLocation: 4, format: 'float32x3', offset: 12 * 4 } // color
-    //                 ]
-    //             }]
-    //         },
-    //         fragment: {
-    //             module: shader.getModule(),
-    //             entryPoint: 'fs_main',
-    //             targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
-    //         },
-    //         primitive: { topology: 'point-list' }
-    //     });
-
-    //     this.cameraBindGroup = this.device.createBindGroup({
-    //         layout: this.finalRenderPipeline.getBindGroupLayout(0),
-    //         entries: [{ binding: 0, resource: { buffer: this.cameraBuffer } }]
-    //     });
-
-    //     this.vertexBuffer = this.device.createBuffer({
-    //         label: "Vertex Buffer",
-    //         size: 0,
-    //         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
-    //     });
-    // }
-
     async createFinalRenderPipeline() {
         const shader = new WGSLShader(this.device, './shaders/final-render.wgsl');
         await shader.load();
