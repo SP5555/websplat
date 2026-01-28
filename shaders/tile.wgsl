@@ -22,6 +22,22 @@ fn toIndex(x : i32, y : i32) -> u32 {
     return u32(y * i32(params.gridX) + x);
 }
 
+fn tryPush(tileIdx: u32, vertexIdx: u32) {
+    loop {
+        let old = atomicLoad(&tileCounters[tileIdx]);
+        if (old >= params.maxPerBin) {
+            return;
+        }
+
+        // bruh
+        if (atomicCompareExchangeWeak(&tileCounters[tileIdx], old, old + 1u).exchanged) {
+            let offset = tileIdx * params.maxPerBin + old;
+            tileIndices[offset] = vertexIdx;
+            return;
+        }
+    }
+}
+
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
@@ -43,12 +59,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let tileY0 = i32(floor(yF));
     if (tileX0 >= 0 && tileX0 < i32(params.gridX) &&
         tileY0 >= 0 && tileY0 < i32(params.gridY)) {
-        let tileIndex = toIndex(tileX0, tileY0);
-        let count = atomicAdd(&tileCounters[tileIndex], 1u);
-        if (count < params.maxPerBin) {
-            let offset = tileIndex * params.maxPerBin + count;
-            tileIndices[offset] = i;
-        }
+        tryPush(toIndex(tileX0, tileY0), i);
     }
 
     // feel free to comment out down here
@@ -58,12 +69,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     var verticalY = tileY0 + 1;
     if (dy < 0.5) { verticalY = tileY0 - 1; };
     if (verticalY >= 0 && verticalY < i32(params.gridY)) {
-        let tileIndex = toIndex(tileX0, verticalY);
-        let count = atomicAdd(&tileCounters[tileIndex], 1u);
-        if (count < params.maxPerBin) {
-            let offset = tileIndex * params.maxPerBin + count;
-            tileIndices[offset] = i;
-        }
+        tryPush(toIndex(tileX0, verticalY), i);
     }
 
     // horizontal neighbor
@@ -71,23 +77,12 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     var horizontalX = tileX0 + 1;
     if (dx < 0.5) { horizontalX = tileX0 - 1; };
     if (horizontalX >= 0 && horizontalX < i32(params.gridX)) {
-        let tileIndex = toIndex(horizontalX, tileY0);
-        let count = atomicAdd(&tileCounters[tileIndex], 1u);
-        if (count < params.maxPerBin) {
-            let offset = tileIndex * params.maxPerBin + count;
-            tileIndices[offset] = i;
-        }
+        tryPush(toIndex(horizontalX, tileY0), i);
     }
 
     // diagonal neighbor
     if (verticalY >= 0 && verticalY < i32(params.gridY) &&
         horizontalX >= 0 && horizontalX < i32(params.gridX)) {
-        let tileIndex = toIndex(horizontalX, verticalY);
-        let count = atomicAdd(&tileCounters[tileIndex], 1u);
-        if (count < params.maxPerBin) {
-            let offset = tileIndex * params.maxPerBin + count;
-            tileIndices[offset] = i;
-        }
+        tryPush(toIndex(horizontalX, verticalY), i);
     }
-
 }
