@@ -6,17 +6,17 @@ struct Vertex {
     color : vec3<f32>,
 };
 
-struct BinParams {
+struct TileParams {
     vertexCount : u32,
     gridX : u32,
     gridY : u32,
-    maxPerBin : u32,
+    maxPerTile : u32,
 };
 
 @group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
 @group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read_write> tileCounters : array<atomic<u32>>;
-@group(0) @binding(3) var<storage, read> params : BinParams;
+@group(0) @binding(3) var<storage, read> params : TileParams;
 
 fn toIndex(x : i32, y : i32) -> u32 {
     return u32(y * i32(params.gridX) + x);
@@ -25,13 +25,13 @@ fn toIndex(x : i32, y : i32) -> u32 {
 fn tryPush(tileIdx: u32, vertexIdx: u32) {
     loop {
         let old = atomicLoad(&tileCounters[tileIdx]);
-        if (old >= params.maxPerBin) {
+        if (old >= params.maxPerTile) {
             return;
         }
 
         // bruh
         if (atomicCompareExchangeWeak(&tileCounters[tileIdx], old, old + 1u).exchanged) {
-            let offset = tileIdx * params.maxPerBin + old;
+            let offset = tileIdx * params.maxPerTile + old;
             tileIndices[offset] = vertexIdx;
             return;
         }

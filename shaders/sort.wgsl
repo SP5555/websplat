@@ -1,5 +1,3 @@
-const TILE_SIZE : u32 = 128u;
-
 struct Vertex {
     pos : vec3<f32>,
     opacity : f32,
@@ -8,66 +6,80 @@ struct Vertex {
     color : vec3<f32>,
 };
 
-struct BinParams {
+struct TileParams {
     vertexCount : u32,
     gridX : u32,
     gridY : u32,
-    maxPerBin : u32,
+    maxPerTile : u32,
 };
 
-@group(0) @binding(0) var<storage, read_write> binVertices : array<Vertex>;
-@group(0) @binding(1) var<storage, read> binCounters : array<u32>;
-@group(0) @binding(2) var<storage, read> params : BinParams;
+@group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
+@group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
+@group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
+@group(0) @binding(3) var<storage, read> params : TileParams;
 
-var<workgroup> sharedVertices : array<Vertex, TILE_SIZE>;
-
-fn min(a: u32, b: u32) -> u32 {
-    return select(b, a, a < b);
+fn swap(a: ptr<storage, u32, read_write>, b: ptr<storage, u32, read_write>) {
+    let temp = *a;
+    *a = *b;
+    *b = temp;
 }
 
-@compute @workgroup_size(64)
-fn cs_main(@builtin(workgroup_id) wg_id : vec3<u32>,
-           @builtin(local_invocation_id) li_id : vec3<u32>) {
+@compute @workgroup_size(128)
+fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
+           @builtin(workgroup_id) workgroup_id : vec3<u32>) {
 
-    let binIndex = wg_id.y * params.gridX + wg_id.x;
-    let count = binCounters[binIndex];
-    if (count == 0u) { return; }
+    let threadID = thread_local_id.x;
+    let gridX = params.gridX;
+    let gridY = params.gridY;
+    let tileID = workgroup_id.x;
+    let numThreads = 128u; // group size
 
-    // total count in bin, capped by maxPerBin for safety
-    let total = min(count, params.maxPerBin);
-    let baseOffset = binIndex * params.maxPerBin;
+    let idxCountInTile = tileCounters[tileID];
+    // empty tile
+    if (idxCountInTile == 0u) { return; }
 
-    // Tiled processing
-    var tileStart = 0u;
-    while (tileStart < total) {
-        let tileCount = min(TILE_SIZE, total - tileStart);
+    let baseIdx = tileID * params.maxPerTile;
 
-        // load tile
-        for (var i = li_id.x; i < tileCount; i += 64u) {
-            sharedVertices[i] = binVertices[baseOffset + tileStart + i];
-        }
-        workgroupBarrier();
+    // odd-even sort
+    // must be done idxCountInTile iterations to guarantee sorted order
+    for (var i = 0u; i < idxCountInTile; i = i + 1u) {
+        let start = i % 2u; // 0 for even, 1 for odd
 
-        // sort tile in shared memory (just like before)
-        if (li_id.x == 0u) {
-            for (var i = 1u; i < tileCount; i++) {
-                var key = sharedVertices[i];
-                var j = i;
-                while (j > 0u && sharedVertices[j-1u].pos.z > key.pos.z) {
-                    sharedVertices[j] = sharedVertices[j-1u];
-                    j = j - 1u;
-                }
-                sharedVertices[j] = key;
+        // this amount of pair-wise comparisons must be done this iteration
+        let compsPerPass = (idxCountInTile - start) / 2u;
+
+        // each thread does this many comparisons
+        // since we only have numThreads threads,
+        // some threads have to do multiple comparisons to cover all pairs
+        let compsPerThread = (compsPerPass + numThreads - 1u) / numThreads;
+
+        for (var j = 0u; j < compsPerThread; j = j + 1u) {
+
+            // index inside this tile
+            let compIdx = threadID * compsPerThread + j;
+            if (compIdx >= compsPerPass) {
+                continue;
+            }
+
+            // baseIdx gives start of this tile's indices
+            // start offsets by 0 or 1 depending on pass
+            let leftIdx = baseIdx + start + compIdx * 2u;
+            let rightIdx = leftIdx + 1u;
+
+            let leftVertexIdx = tileIndices[leftIdx];
+            let rightVertexIdx = tileIndices[rightIdx];
+
+            let leftZ = vertices[leftVertexIdx].pos.z;
+            let rightZ = vertices[rightVertexIdx].pos.z;
+
+            // swap if out of order (farther vertex has larger z in NDC)
+            if (leftZ > rightZ) {
+                let tmp = tileIndices[leftIdx];
+                tileIndices[leftIdx] = tileIndices[rightIdx];
+                tileIndices[rightIdx] = tmp;
             }
         }
-        workgroupBarrier();
-
-        // write tile back
-        for (var i = li_id.x; i < tileCount; i += 64u) {
-            binVertices[baseOffset + tileStart + i] = sharedVertices[i];
-        }
-
-        tileStart += TILE_SIZE;
+        // synchronize all threads before next iteration
         workgroupBarrier();
     }
 }

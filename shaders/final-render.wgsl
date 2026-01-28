@@ -10,11 +10,11 @@ struct Vertex {
     color : vec3<f32>,
 };
 
-struct BinParams {
+struct TileParams {
     vertexCount : u32,
     gridX : u32,
     gridY : u32,
-    maxPerBin : u32,
+    maxPerTile : u32,
 };
 
 struct CanvasParams {
@@ -25,7 +25,7 @@ struct CanvasParams {
 @group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
 @group(0) @binding(1) var<storage, read> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
-@group(0) @binding(3) var<storage, read> params : BinParams;
+@group(0) @binding(3) var<storage, read> params : TileParams;
 @group(0) @binding(4) var<uniform> canvasParams : CanvasParams;
 
 @vertex
@@ -54,13 +54,15 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     let aspect = f32(canvasParams.width) / f32(canvasParams.height);
 
     let count = tileCounters[tileIndex];
-    var color = vec3<f32>(0.0);
 
     let r = 0.01; // splat radius in [0..1] screen space
     let sigma = r * 0.5; // adjust as needed
 
+    var accumColor = vec3<f32>(0.0);
+    var accumAlpha = 0.0;
+
     for (var i = 0u; i < count; i = i + 1u) {
-        let v = vertices[tileIndices[tileIndex * params.maxPerBin + i]];
+        let v = vertices[tileIndices[tileIndex * params.maxPerTile + i]];
 
         // Compare fragment in global UV with vertex position in global UV
         // pos is in normalized clip space [-1,1]
@@ -76,15 +78,21 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         let weight = exp(-dist2 / (2.0 * sigma * sigma));
 
         if (dist2 < r * r) {
-            color += v.color * v.opacity * weight;
-            color = min(color, vec3<f32>(1.0));
-            if (color.x >= 1.0 && color.y >= 1.0 && color.z >= 1.0) { break; }
+            let alpha = v.opacity * weight;
+
+            accumColor += (1.0 - accumAlpha) * v.color * alpha;
+            accumAlpha += (1.0 - accumAlpha) * alpha;
+
+            // very opaque, stop early
+            if (accumAlpha >= 0.99) {
+                break;
+            }
         }
     }
 
-    // debug color: vertex count / maxPerBin
-    // color = vec3<f32>(f32(count) / f32(params.maxPerBin));
+    // debug color: vertex count / maxPerTile
+    // color = vec3<f32>(f32(count) / f32(params.maxPerTile));
 
-    return vec4<f32>(color, 1.0);
+    return vec4<f32>(accumColor, 1.0);
     // return vec4<f32>(1.0, 0.0, 0.0, 1.0);
 }

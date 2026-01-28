@@ -27,7 +27,7 @@ export default class Renderer {
         this.isPipelineInitialized = false;
 
         // buffer limit size = 2^27 bytes
-        this.GRID_SIZE = { x: 64, y: 32 };
+        this.GRID_SIZE = { x: 128, y: 64 };
         this.MAX_VERTICES_PER_TILE = 2048;
 
         this.init();
@@ -71,7 +71,7 @@ export default class Renderer {
 
         await this.createTransformPipeline();
         await this.createTilePipeline();
-        // await this.createSortPipeline();
+        await this.createSortPipeline();
         await this.createFinalRenderPipeline();
 
         this.isPipelineInitialized = true;
@@ -326,15 +326,15 @@ export default class Renderer {
             ]
         });
 
-        // this.sortBindGroup = this.device.createBindGroup({
-        //     layout: this.sortPipeline.getBindGroupLayout(0),
-        //     entries: [
-        //         { binding: 0, resource: { buffer: this.transformOutputBuffer } },
-        //         { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
-        //         { binding: 2, resource: { buffer: this.tileCountersBuffer } },
-        //         { binding: 3, resource: { buffer: this.tileParamsBuffer } }
-        //     ]
-        // });
+        this.sortBindGroup = this.device.createBindGroup({
+            layout: this.sortPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.tileParamsBuffer } }
+            ]
+        });
 
         this.finalRenderBindGroup = this.device.createBindGroup({
             layout: this.finalRenderPipeline.getBindGroupLayout(0),
@@ -381,15 +381,14 @@ export default class Renderer {
         }
 
         // Pass 3: Sorting Pass
-        // {
-
-        //     const pass = encoder.beginComputePass();
-        //     pass.setPipeline(this.sortPipeline);
-        //     pass.setBindGroup(0, this.sortBindGroup);
-        //     pass.dispatchWorkgroups(this.GRID_SIZE.x * this.GRID_SIZE.y);
-        //     pass.end();
-
-        // }
+        {
+            const pass = encoder.beginComputePass();
+            pass.setPipeline(this.sortPipeline);
+            pass.setBindGroup(0, this.sortBindGroup);
+            const numWorkgroups = this.GRID_SIZE.x * this.GRID_SIZE.y;
+            pass.dispatchWorkgroups(numWorkgroups);
+            pass.end();
+        }
 
         // Pass 4: Final Render Pass
         {
