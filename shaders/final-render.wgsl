@@ -22,10 +22,11 @@ struct CanvasParams {
     height : u32,
 };
 
-@group(0) @binding(0) var<storage, read> tileVertices : array<Vertex>;
-@group(0) @binding(1) var<storage, read> tileCounters : array<u32>;
-@group(0) @binding(2) var<storage, read> params : BinParams;
-@group(0) @binding(3) var<uniform> canvasParams : CanvasParams;
+@group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
+@group(0) @binding(1) var<storage, read> tileIndices : array<u32>;
+@group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
+@group(0) @binding(3) var<storage, read> params : BinParams;
+@group(0) @binding(4) var<uniform> canvasParams : CanvasParams;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
@@ -59,7 +60,7 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     let sigma = r * 0.5; // adjust as needed
 
     for (var i = 0u; i < count; i = i + 1u) {
-        let v = tileVertices[tileIndex * params.maxPerBin + i];
+        let v = vertices[tileIndices[tileIndex * params.maxPerBin + i]];
 
         // Compare fragment in global UV with vertex position in global UV
         // pos is in normalized clip space [-1,1]

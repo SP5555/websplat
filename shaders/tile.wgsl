@@ -14,7 +14,7 @@ struct BinParams {
 };
 
 @group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
-@group(0) @binding(1) var<storage, read_write> tileVertices : array<Vertex>;
+@group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read_write> tileCounters : array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read> params : BinParams;
 
@@ -47,7 +47,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         let count = atomicAdd(&tileCounters[tileIndex], 1u);
         if (count < params.maxPerBin) {
             let offset = tileIndex * params.maxPerBin + count;
-            tileVertices[offset] = v;
+            tileIndices[offset] = i;
         }
     }
 
@@ -62,7 +62,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         let count = atomicAdd(&tileCounters[tileIndex], 1u);
         if (count < params.maxPerBin) {
             let offset = tileIndex * params.maxPerBin + count;
-            tileVertices[offset] = v;
+            tileIndices[offset] = i;
         }
     }
 
@@ -75,7 +75,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         let count = atomicAdd(&tileCounters[tileIndex], 1u);
         if (count < params.maxPerBin) {
             let offset = tileIndex * params.maxPerBin + count;
-            tileVertices[offset] = v;
+            tileIndices[offset] = i;
         }
     }
 
@@ -86,7 +86,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         let count = atomicAdd(&tileCounters[tileIndex], 1u);
         if (count < params.maxPerBin) {
             let offset = tileIndex * params.maxPerBin + count;
-            tileVertices[offset] = v;
+            tileIndices[offset] = i;
         }
     }
 

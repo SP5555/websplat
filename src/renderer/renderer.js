@@ -19,7 +19,7 @@ export default class Renderer {
         this.cameraBuffer = null;
         this.cameraBindGroup = null;
 
-        this.GRID_SIZE = { x: 32, y: 16 };
+        this.GRID_SIZE = { x: 128, y: 64 };
         this.MAX_VERTICES_PER_TILE = 2048;
 
         this.init();
@@ -113,9 +113,9 @@ export default class Renderer {
         const shader = new WGSLShader(this.device, './shaders/tile.wgsl');
         await shader.load();
 
-        this.tileVerticesBuffer = this.device.createBuffer({
-            label: "Tile Vertices Buffer",
-            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * this.floatsPerVertex * 4),
+        this.tileVertIdxBuffer = this.device.createBuffer({
+            label: "Tile Vertex Index Buffer",
+            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -150,7 +150,7 @@ export default class Renderer {
             layout: this.tilePipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 1, resource: { buffer: this.tileVerticesBuffer } },
+                { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } },
                 { binding: 3, resource: { buffer: this.tileParamsBuffer } }
             ]
@@ -173,9 +173,10 @@ export default class Renderer {
         this.sortBindGroup = this.device.createBindGroup({
             layout: this.sortPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
-                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
-                { binding: 2, resource: { buffer: this.tileParamsBuffer } }
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.tileParamsBuffer } }
             ]
         });
     }
@@ -254,10 +255,11 @@ export default class Renderer {
         this.finalRenderBindGroup = this.device.createBindGroup({
             layout: this.finalRenderPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
-                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
-                { binding: 2, resource: { buffer: this.tileParamsBuffer } },
-                { binding: 3, resource: { buffer: this.canvasParamsBuffer } }
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.tileParamsBuffer } },
+                { binding: 4, resource: { buffer: this.canvasParamsBuffer } }
             ]
         });
     }
@@ -337,10 +339,10 @@ export default class Renderer {
             usage: GPUBufferUsage.STORAGE
         });
 
-        if (this.tileVerticesBuffer) this.tileVerticesBuffer.destroy();
-        this.tileVerticesBuffer = this.device.createBuffer({
-            label: "Tile Vertices Buffer",
-            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * this.floatsPerVertex * 4),
+        if (this.tileVertIdxBuffer) this.tileVertIdxBuffer.destroy();
+        this.tileVertIdxBuffer = this.device.createBuffer({
+            label: "Tile Vertex Index Buffer",
+            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -357,7 +359,7 @@ export default class Renderer {
             layout: this.tilePipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 1, resource: { buffer: this.tileVerticesBuffer } },
+                { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } },
                 { binding: 3, resource: { buffer: this.tileParamsBuffer } }
             ]
@@ -366,19 +368,21 @@ export default class Renderer {
         // this.sortBindGroup = this.device.createBindGroup({
         //     layout: this.sortPipeline.getBindGroupLayout(0),
         //     entries: [
-        //         { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
-        //         { binding: 1, resource: { buffer: this.tileCountersBuffer } },
-        //         { binding: 2, resource: { buffer: this.tileParamsBuffer } }
+        //         { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+        //         { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
+        //         { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+        //         { binding: 3, resource: { buffer: this.tileParamsBuffer } }
         //     ]
         // });
 
         this.finalRenderBindGroup = this.device.createBindGroup({
             layout: this.finalRenderPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.tileVerticesBuffer } },
-                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
-                { binding: 2, resource: { buffer: this.tileParamsBuffer } },
-                { binding: 3, resource: { buffer: this.canvasParamsBuffer } }
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.tileParamsBuffer } },
+                { binding: 4, resource: { buffer: this.canvasParamsBuffer } }
             ]
         });
     }
