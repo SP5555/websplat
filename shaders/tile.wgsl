@@ -22,7 +22,7 @@ fn toIndex(x : i32, y : i32) -> u32 {
     return u32(y * i32(params.gridX) + x);
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
     if (i >= params.vertexCount) { return; }

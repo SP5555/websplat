@@ -13,11 +13,18 @@ export default class Renderer {
         this.vertexBuffer = null;
         this.vertexCount = 0;
         this.floatsPerVertex = 0;
-        this.finalRenderPipeline = null;
 
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
         this.cameraBuffer = null;
         this.cameraBindGroup = null;
+
+        // 4 stage pipeline
+        this.transformPipeline = null;
+        this.tilePipeline = null;
+        this.sortPipeline = null;
+        this.finalRenderPipeline = null;
+
+        this.isPipelineInitialized = false;
 
         // buffer limit size = 2^27 bytes
         this.GRID_SIZE = { x: 64, y: 32 };
@@ -60,24 +67,22 @@ export default class Renderer {
     }
 
     async initGPUPipeline() {
-        this.createCameraBuffer();
+        this.createDataBuffers();
+
         await this.createTransformPipeline();
         await this.createTilePipeline();
         // await this.createSortPipeline();
         await this.createFinalRenderPipeline();
+
+        this.isPipelineInitialized = true;
     }
 
-    createCameraBuffer() {
+    createDataBuffers() {
         this.cameraBuffer = this.device.createBuffer({
             label: "Camera Buffer",
             size: 2 * 16 * 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
-    }
-
-    async createTransformPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/transform.wgsl');
-        await shader.load();
 
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
@@ -90,6 +95,43 @@ export default class Renderer {
             size: 80, // minimum size
             usage: GPUBufferUsage.STORAGE
         });
+
+        this.tileVertIdxBuffer = this.device.createBuffer({
+            label: "Tile Vertex Index Buffer",
+            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        // tile counter is reset each frame, requires COPY_DST
+        this.tileCountersBuffer = this.device.createBuffer({
+            label: "Tile Counters Buffer",
+            size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per tile
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        // vertex count in the scene, grid sizes and max vertices a tile can hold
+        // COPY_DST for future GRID_SIZE or MAX_VERTICES_PER_TILE changes
+        this.tileParamsBuffer = this.device.createBuffer({
+            label: "Tile Params Buffer",
+            size: 4 * 4, // 4x uint32
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+        const tileParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_TILE]);
+        this.device.queue.writeBuffer(this.tileParamsBuffer, 0, tileParams.buffer);
+
+        // COPY_DST for canvas resize updates
+        this.canvasParamsBuffer = this.device.createBuffer({
+            label: "Canvas Params Buffer",
+            size: 2 * 4, // width and height as uint32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
+        this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
+    }
+
+    async createTransformPipeline() {
+        const shader = new WGSLShader(this.device, './shaders/transform.wgsl');
+        await shader.load();
 
         this.transformPipeline = this.device.createComputePipeline({
             label: "Transform Pipeline",
@@ -113,30 +155,6 @@ export default class Renderer {
     async createTilePipeline() {
         const shader = new WGSLShader(this.device, './shaders/tile.wgsl');
         await shader.load();
-
-        this.tileVertIdxBuffer = this.device.createBuffer({
-            label: "Tile Vertex Index Buffer",
-            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
-            usage: GPUBufferUsage.STORAGE
-        });
-
-        // bin counter is reset each frame, requires COPY_DST
-        this.tileCountersBuffer = this.device.createBuffer({
-            label: "Tile Counters Buffer",
-            size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per tile
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        });
-
-        // vertex count in the scene, grid sizes and max vertices a tile can hold
-        // COPY_DST for future GRID_SIZE or MAX_VERTICES_PER_TILE changes
-        this.tileParamsBuffer = this.device.createBuffer({
-            label: "Tile Params Buffer",
-            size: 4 * 4, // 4x uint32
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        });
-
-        const tileParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_TILE]);
-        this.device.queue.writeBuffer(this.tileParamsBuffer, 0, tileParams.buffer);
 
         this.tilePipeline = this.device.createComputePipeline({
             label: "Tile Pipeline",
@@ -201,16 +219,6 @@ export default class Renderer {
             },
             primitive: { topology: 'triangle-list' }
         });
-
-        // COPY_DST for canvas resize updates
-        this.canvasParamsBuffer = this.device.createBuffer({
-            label: "Canvas Params Buffer",
-            size: 2 * 4, // width and height as uint32
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-        });
-
-        const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
-        this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
 
         this.finalRenderBindGroup = this.device.createBindGroup({
             layout: this.finalRenderPipeline.getBindGroupLayout(0),
@@ -278,13 +286,6 @@ export default class Renderer {
     }
 
     reallocateVertexBuffer(bufferData) {
-        // if (this.vertexBuffer) this.vertexBuffer.destroy();
-        // this.vertexBuffer = this.device.createBuffer({
-        //     label: "Vertex Buffer",
-        //     size: bufferData.byteLength,
-        //     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
-        // });
-
         if (this.transformInputBuffer) this.transformInputBuffer.destroy();
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
@@ -349,12 +350,12 @@ export default class Renderer {
     /* ===== ===== Rendering ===== ===== */
 
     async render(dt) {
-        if (!this.device || !this.context || !this.finalRenderPipeline) return;
+        if (!this.device || !this.context || !this.isPipelineInitialized) return;
 
         this.updateCameraBuffer(dt);
 
         this.device.queue.writeBuffer(this.tileCountersBuffer, 0, new Uint32Array(this.tileCountersBuffer.size / 4).fill(0).buffer);
-        
+
         const encoder = this.device.createCommandEncoder();
 
         // Pass 1: Transform Compute Pass
@@ -362,7 +363,8 @@ export default class Renderer {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.transformPipeline);
             pass.setBindGroup(0, this.transformBindGroup);
-            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / 64));
+            const WGSize = 128;
+            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
         }
@@ -372,7 +374,8 @@ export default class Renderer {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.tilePipeline);
             pass.setBindGroup(0, this.tileBindGroup);
-            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / 64));
+            const WGSize = 128;
+            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
         }
@@ -399,14 +402,11 @@ export default class Renderer {
                 }]
             });
             pass.setPipeline(this.finalRenderPipeline);
-            // pass.setBindGroup(0, this.cameraBindGroup);
-            // pass.setVertexBuffer(0, this.vertexBuffer);
-            // if (this.vertexCount) pass.draw(this.vertexCount, 1);
             pass.setBindGroup(0, this.finalRenderBindGroup);
             pass.draw(3); // fullscreen triangle
             pass.end();
         }
-        
+
         this.device.queue.submit([encoder.finish()]);
     }
 
