@@ -20,7 +20,7 @@ export default class Renderer {
         this.cameraBindGroup = null;
 
         // buffer limit size = 2^27 bytes
-        this.GRID_SIZE = { x: 128, y: 64 };
+        this.GRID_SIZE = { x: 64, y: 32 };
         this.MAX_VERTICES_PER_TILE = 2048;
 
         this.init();
