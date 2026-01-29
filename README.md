@@ -1,4 +1,4 @@
-# 3DGS WebGPU Renderer
+# WebSplat
 
 A fun little 3DGS scene renderer implemented with WebGPU! Don't expect much, I haven't done anything. Chill.
 
@@ -12,7 +12,7 @@ git clone https://github.com/SP5555/3dgs-webgpu.git
 cd 3dgs-webgpu
 ```
 
-2. Install dependencies
+2. Install dependencies (You can skip this)
 ```bash
 npm install
 ```
