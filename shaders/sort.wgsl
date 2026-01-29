@@ -1,3 +1,5 @@
+const MAX_THREADS_PER_WORKGROUP = 256u;
+
 struct Vertex {
     pos : vec3<f32>,
     opacity : f32,
@@ -18,13 +20,7 @@ struct TileParams {
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(3) var<storage, read> params : TileParams;
 
-fn swap(a: ptr<storage, u32, read_write>, b: ptr<storage, u32, read_write>) {
-    let temp = *a;
-    *a = *b;
-    *b = temp;
-}
-
-@compute @workgroup_size(128)
+@compute @workgroup_size(MAX_THREADS_PER_WORKGROUP)
 fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
            @builtin(workgroup_id) workgroup_id : vec3<u32>) {
 
@@ -32,7 +28,6 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     let gridX = params.gridX;
     let gridY = params.gridY;
     let tileID = workgroup_id.x;
-    let numThreads = 128u; // group size
 
     let idxCountInTile = tileCounters[tileID];
     // empty tile
@@ -49,9 +44,9 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
         let compsPerPass = (idxCountInTile - start) / 2u;
 
         // each thread does this many comparisons
-        // since we only have numThreads threads,
+        // since we only have MAX_THREADS_PER_WORKGROUP threads,
         // some threads have to do multiple comparisons to cover all pairs
-        let compsPerThread = (compsPerPass + numThreads - 1u) / numThreads;
+        let compsPerThread = (compsPerPass + MAX_THREADS_PER_WORKGROUP - 1u) / MAX_THREADS_PER_WORKGROUP;
 
         for (var j = 0u; j < compsPerThread; j = j + 1u) {
 

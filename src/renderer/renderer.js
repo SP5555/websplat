@@ -63,6 +63,7 @@ export default class Renderer {
         this.context = this.canvas.getContext('webgpu');
         this.configureContext();
 
+        console.log("Device limits: ", this.device.limits);
         return true;
     }
 
