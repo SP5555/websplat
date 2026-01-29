@@ -30,7 +30,7 @@ export default class Renderer {
 
         // buffer limit size = 2^27 bytes
         this.GRID_SIZE = { x: 128, y: 64 };
-        this.MAX_VERTICES_PER_TILE = 2048;
+        this.MAX_VERTICES_PER_TILE = 3072;
 
         this.init();
     }
@@ -180,7 +180,7 @@ export default class Renderer {
     }
 
     async createSortPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/sort-v2.wgsl');
+        const shader = new WGSLShader(this.device, './shaders/sort.wgsl');
         await shader.load();
 
         this.sortPipeline = this.device.createComputePipeline({
