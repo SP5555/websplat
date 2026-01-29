@@ -70,14 +70,30 @@ export default class Renderer {
     }
 
     async initGPUPipeline() {
+        await this.initShaders();
+
         this.createDataBuffers();
 
-        await this.createTransformPipeline();
-        await this.createTilePipeline();
-        await this.createSortPipeline();
-        await this.createFinalRenderPipeline();
+        this.createTransformPipeline();
+        this.createTilePipeline();
+        this.createSortPipeline();
+        this.createFinalRenderPipeline();
 
         this.isPipelineInitialized = true;
+    }
+
+    async initShaders() {
+        this.transformShader = new WGSLShader(this.device, './shaders/transform.wgsl');
+        await this.transformShader.load();
+        
+        this.tileShader = new WGSLShader(this.device, './shaders/tile.wgsl');
+        await this.tileShader.load();
+
+        this.sortShader = new WGSLShader(this.device, './shaders/sort.wgsl');
+        await this.sortShader.load();
+
+        this.finalRenderShader = new WGSLShader(this.device, './shaders/final-render.wgsl');
+        await this.finalRenderShader.load();
     }
 
     createDataBuffers() {
@@ -132,15 +148,12 @@ export default class Renderer {
         this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
     }
 
-    async createTransformPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/transform.wgsl');
-        await shader.load();
-
+    createTransformPipeline() {
         this.transformPipeline = this.device.createComputePipeline({
             label: "Transform Pipeline",
             layout: 'auto',
             compute: {
-                module: shader.getModule(),
+                module: this.transformShader.getModule(),
                 entryPoint: 'cs_main'
             }
         });
@@ -155,15 +168,12 @@ export default class Renderer {
         });
     }
 
-    async createTilePipeline() {
-        const shader = new WGSLShader(this.device, './shaders/tile.wgsl');
-        await shader.load();
-
+    createTilePipeline() {
         this.tilePipeline = this.device.createComputePipeline({
             label: "Tile Pipeline",
             layout: 'auto',
             compute: {
-                module: shader.getModule(),
+                module: this.tileShader.getModule(),
                 entryPoint: 'cs_main'
             }
         });
@@ -179,15 +189,12 @@ export default class Renderer {
         });
     }
 
-    async createSortPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/sort.wgsl');
-        await shader.load();
-
+    createSortPipeline() {
         this.sortPipeline = this.device.createComputePipeline({
             label: "Sort Pipeline",
             layout: 'auto',
             compute: {
-                module: shader.getModule(),
+                module: this.sortShader.getModule(),
                 entryPoint: 'cs_main'
             }
         });
@@ -203,20 +210,17 @@ export default class Renderer {
         });
     }
 
-    async createFinalRenderPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/final-render.wgsl');
-        await shader.load();
-
+    createFinalRenderPipeline() {
         this.finalRenderPipeline = this.device.createRenderPipeline({
             label: "Final Render Pipeline",
             layout: 'auto',
             vertex: {
-                module: shader.getModule(),
+                module: this.finalRenderShader.getModule(),
                 entryPoint: 'vs_main',
                 buffers: [] // fullscreen triangle
             },
             fragment: {
-                module: shader.getModule(),
+                module: this.finalRenderShader.getModule(),
                 entryPoint: 'fs_main',
                 targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
             },
