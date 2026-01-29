@@ -180,7 +180,7 @@ export default class Renderer {
     }
 
     async createSortPipeline() {
-        const shader = new WGSLShader(this.device, './shaders/sort.wgsl');
+        const shader = new WGSLShader(this.device, './shaders/sort-v2.wgsl');
         await shader.load();
 
         this.sortPipeline = this.device.createComputePipeline({
