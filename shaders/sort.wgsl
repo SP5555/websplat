@@ -1,4 +1,4 @@
-const MAX_THREADS_PER_WORKGROUP = 256u;
+const THREADS_PER_WORKGROUP = 256u;
 
 struct Vertex {
     pos : vec3<f32>,
@@ -20,13 +20,14 @@ struct TileParams {
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(3) var<storage, read> params : TileParams;
 
-@compute @workgroup_size(MAX_THREADS_PER_WORKGROUP)
+var<workgroup> localIndices : array<u32, THREADS_PER_WORKGROUP>;
+var<workgroup> localVertZs : array<f32, THREADS_PER_WORKGROUP>;
+
+@compute @workgroup_size(THREADS_PER_WORKGROUP)
 fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
            @builtin(workgroup_id) workgroup_id : vec3<u32>) {
 
-    let threadID = thread_local_id.x;
-    let gridX = params.gridX;
-    let gridY = params.gridY;
+    let threadLocalID = thread_local_id.x;
     let tileID = workgroup_id.x;
 
     let idxCountInTile = tileCounters[tileID];
@@ -35,46 +36,45 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
 
     let baseIdx = tileID * params.maxPerTile;
 
+    // load into shared memory from global memory
+    for (var i = threadLocalID; i < idxCountInTile; i = i + THREADS_PER_WORKGROUP) {
+        let vertexIdx = tileIndices[baseIdx + i];
+        localIndices[i] = vertexIdx;
+        localVertZs[i] = vertices[vertexIdx].pos.z;
+    }
+
     // odd-even sort
     // must be done idxCountInTile iterations to guarantee sorted order
-    for (var i = 0u; i < idxCountInTile; i = i + 1u) {
-        let start = i % 2u; // 0 for even, 1 for odd
+    for (var i = 0u; i < idxCountInTile - 1u; i = i + 1u) {
 
-        // this amount of pair-wise comparisons must be done this iteration
-        let compsPerPass = (idxCountInTile - start) / 2u;
+        let offset = i & 1u; // 0 for even, 1 for odd
 
-        // each thread does this many comparisons
-        // since we only have MAX_THREADS_PER_WORKGROUP threads,
-        // some threads have to do multiple comparisons to cover all pairs
-        let compsPerThread = (compsPerPass + MAX_THREADS_PER_WORKGROUP - 1u) / MAX_THREADS_PER_WORKGROUP;
+        let leftIdx = threadLocalID * 2u + offset;
+        let rightIdx = leftIdx + 1u;
 
-        for (var j = 0u; j < compsPerThread; j = j + 1u) {
+        if (rightIdx < idxCountInTile) {
+            let leftZ = localVertZs[leftIdx];
+            let rightZ = localVertZs[rightIdx];
 
-            // index inside this tile
-            let compIdx = threadID * compsPerThread + j;
-            if (compIdx >= compsPerPass) {
-                continue;
-            }
+            // sort descending (far to near)
+            if (leftZ < rightZ) {
+                // swap
+                let tempIdx = localIndices[leftIdx];
+                localIndices[leftIdx] = localIndices[rightIdx];
+                localIndices[rightIdx] = tempIdx;
 
-            // baseIdx gives start of this tile's indices
-            // start offsets by 0 or 1 depending on pass
-            let leftIdx = baseIdx + start + compIdx * 2u;
-            let rightIdx = leftIdx + 1u;
-
-            let leftVertexIdx = tileIndices[leftIdx];
-            let rightVertexIdx = tileIndices[rightIdx];
-
-            let leftZ = vertices[leftVertexIdx].pos.z;
-            let rightZ = vertices[rightVertexIdx].pos.z;
-
-            // swap if out of order (farther vertex has larger z in NDC)
-            if (leftZ > rightZ) {
-                let tmp = tileIndices[leftIdx];
-                tileIndices[leftIdx] = tileIndices[rightIdx];
-                tileIndices[rightIdx] = tmp;
+                let tempZ = localVertZs[leftIdx];
+                localVertZs[leftIdx] = localVertZs[rightIdx];
+                localVertZs[rightIdx] = tempZ;
             }
         }
+
         // synchronize all threads before next iteration
         workgroupBarrier();
+    }
+
+    // write back to global memory
+    for (var i = threadLocalID; i < idxCountInTile; i = i + THREADS_PER_WORKGROUP) {
+        tileIndices[baseIdx + i] = localIndices[i];
     }
 }

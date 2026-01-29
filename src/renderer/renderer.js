@@ -4,6 +4,8 @@ import Camera from "./camera.js";
 import { MeshBufferBuilder } from "./mesh-buffer-builder.js";
 import WGSLShader from "./wgsl-shader/wgsl-shader.js";
 
+const BUFFER_MIN_SIZE = 80; // bytes
+
 export default class Renderer {
     constructor(input) {
         this.canvas = document.getElementById('canvas00');
@@ -87,19 +89,19 @@ export default class Renderer {
 
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
-            size: 80, // minimum size
+            size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
-            size: 80, // minimum size
+            size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
         this.tileVertIdxBuffer = this.device.createBuffer({
             label: "Tile Vertex Index Buffer",
-            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
+            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -304,7 +306,7 @@ export default class Renderer {
         if (this.tileVertIdxBuffer) this.tileVertIdxBuffer.destroy();
         this.tileVertIdxBuffer = this.device.createBuffer({
             label: "Tile Vertex Index Buffer",
-            size: Math.max(80, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
+            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
             usage: GPUBufferUsage.STORAGE
         });
 

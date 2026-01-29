@@ -1,8 +1,5 @@
 'use strict';
 
-import { EVENTS } from "../utils/event.js";
-import { eventBus } from "../utils/event-emitters.js";
-
 const C0 = 0.28209;
 
 export default class PLYLoader {
