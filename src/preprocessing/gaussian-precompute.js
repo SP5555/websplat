@@ -50,20 +50,6 @@ export function GaussianPrecompute(raw) {
         covariances[base + 3] = cov[4]; // cyy
         covariances[base + 4] = cov[5]; // cyz
         covariances[base + 5] = cov[8]; // czz
-
-        // ===== FLIP Y AND Z AXES =====
-        // Reflect * C * Reflect^T where Reflect = diag(1, -1, -1)
-        // [ cxx  -cxy  -cxz ]
-        // [ -cxy  cyy   cyz ]
-        // [ -cxz  cyz   czz ]
-
-        // flip positions
-        positions[i*3 + 1] *= -1; // y
-        positions[i*3 + 2] *= -1; // z
-        // flip covariance
-        covariances[base + 1] *= -1; // cxy
-        covariances[base + 2] *= -1; // cxz
-        // cyz, cxx, cyy, czz stay the same
     }
 
     return {

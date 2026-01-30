@@ -26,6 +26,7 @@ struct Vertex {
 // [   0    0   1 ]
 // where
 // cov1 = (cxx', cxy', cyy')
+// cov2 = unused
 
 @group(0) @binding(0) var<uniform> camera : Camera;
 @group(0) @binding(1) var<storage, read> vertices : array<Vertex>;
@@ -45,7 +46,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     // perspective divide
     let transformedPos = vec3<f32>(
         c.x / c.w,
-        - c.y / c.w,
+        c.y / c.w,
         c.z / c.w
     );
 
@@ -53,6 +54,15 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     /*
         clip-space position is given by:
         PV * [x y z 1]^T = [c_x c_y c_z c_w]^T
+        where:
+        - PV = [ PV00 PV01 PV02 PV03
+                 PV10 PV11 PV12 PV13
+                 PV20 PV21 PV22 PV23
+                 PV30 PV31 PV32 PV33 ]
+        - c_x = PV00*x + PV01*y + PV02*z + PV03*1
+        - c_y = PV10*x + PV11*y + PV12*z + PV13*1
+        - c_z = PV20*x + PV21*y + PV22*z + PV23*1
+        - c_w = PV30*x + PV31*y + PV32*z + PV33*1
 
         NDC is given by:
         [ X ] = [ c_x/c_w ]
@@ -73,18 +83,20 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         v.cov1.z, v.cov2.y, v.cov2.z
     );
 
-    let inv_c_w2 = 1.0 / (c.w * c.w);
+    let w = max(c.w, 1e-6);
+    let inv_c_w2 = 1.0 / (w * w);
 
     // Jacobian
+    // note that pvMatrix is column-major
     let J0 = vec3<f32>(
-        (pvMatrix[0][0] * c.w - pvMatrix[3][0] * c.x) * inv_c_w2,
-        (pvMatrix[0][1] * c.w - pvMatrix[3][1] * c.x) * inv_c_w2,
-        (pvMatrix[0][2] * c.w - pvMatrix[3][2] * c.x) * inv_c_w2
+        (pvMatrix[0][0] * c.w - pvMatrix[0][3] * c.x) * inv_c_w2,
+        (pvMatrix[1][0] * c.w - pvMatrix[1][3] * c.x) * inv_c_w2,
+        (pvMatrix[2][0] * c.w - pvMatrix[2][3] * c.x) * inv_c_w2
     );
     let J1 = vec3<f32>(
-        (pvMatrix[1][0] * c.w - pvMatrix[3][0] * c.y) * inv_c_w2,
-        (pvMatrix[1][1] * c.w - pvMatrix[3][1] * c.y) * inv_c_w2,
-        (pvMatrix[1][2] * c.w - pvMatrix[3][2] * c.y) * inv_c_w2
+        (pvMatrix[0][1] * c.w - pvMatrix[0][3] * c.y) * inv_c_w2,
+        (pvMatrix[1][1] * c.w - pvMatrix[1][3] * c.y) * inv_c_w2,
+        (pvMatrix[2][1] * c.w - pvMatrix[2][3] * c.y) * inv_c_w2
     );
 
     // transformed covariance = J * cov * J^T

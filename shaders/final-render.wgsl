@@ -64,20 +64,33 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     for (var i = 0u; i < count; i = i + 1u) {
         let v = vertices[tileIndices[tileIndex * params.maxPerTile + i]];
 
-        // Compare fragment in global UV with vertex position in global UV
+        // Compare fragment in NCD with vertex position in NDC
         // pos is in normalized clip space [-1,1]
         // uv is in [0,1]
-        let vUV = (v.pos.xy + vec2<f32>(1.0)) * 0.5;
-        let dx = abs(vUV.x - uv.x);
-        let dy = abs(vUV.y - uv.y);
+        let fragNDC = uv * 2.0 - vec2<f32>(1.0);
 
-        // Scale dx by aspect ratio
-        let dx_corrected = dx * aspect;
+        let dx = (fragNDC.x - v.pos.x) * aspect;
+        let dy = fragNDC.y - v.pos.y;
 
-        let dist2 = dx_corrected * dx_corrected + dy * dy;
-        let weight = exp(-dist2 / (2.0 * sigma * sigma));
+        let cxx = v.cov1.x * aspect * aspect;
+        let cxy = v.cov1.y * aspect;
+        let cyy = v.cov1.z;
 
-        if (dist2 < r * r) {
+        let det = cxx * cyy - cxy * cxy;
+        if (det <= 0.0) {
+            continue; // broken, skip
+        }
+        let invDet = 1.0 / det;
+
+        let invCxx =  cyy * invDet;
+        let invCxy = -cxy * invDet;
+        let invCyy =  cxx * invDet;
+
+        // Mahalanobis distance squared
+        let dist2 = dx * dx * invCxx + 2.0 * dx * dy * invCxy + dy * dy * invCyy;
+
+        if (dist2 < 9.0) { // 3 sigma
+            let weight = exp(-dist2 * 0.5);
             let alpha = v.opacity * weight;
 
             accumColor += (1.0 - accumAlpha) * v.color * alpha;

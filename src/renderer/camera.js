@@ -53,7 +53,9 @@ export default class Camera {
 
     update(dt=0.016) {
         if (isMouseOverGUI()) return;
-        const { dx, dy } = this.input.consumeDelta();
+        let { dx, dy } = this.input.consumeDelta();
+        dx = Math.max(-50, Math.min(50, dx));
+        dy = -Math.max(-50, Math.min(50, dy));
         const scrollDelta = this.input.consumeScroll();
 
         // offset of camera from target

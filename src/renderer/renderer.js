@@ -12,7 +12,6 @@ export default class Renderer {
         this.device = null;
         this.context = null;
 
-        this.vertexBuffer = null;
         this.vertexCount = 0;
         this.floatsPerVertex = 0;
 
@@ -29,8 +28,8 @@ export default class Renderer {
         this.isPipelineInitialized = false;
 
         // buffer limit size = 2^27 bytes
-        this.GRID_SIZE = { x: 128, y: 64 };
-        this.MAX_VERTICES_PER_TILE = 3072;
+        this.GRID_SIZE = { x: 64, y: 32 };
+        this.MAX_VERTICES_PER_TILE = 4096;
 
         this.init();
     }
@@ -287,7 +286,6 @@ export default class Renderer {
             this.MAX_VERTICES_PER_TILE
         ]);
 
-        // this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.tileParamsBuffer, 0, tileParams.buffer);
     }
