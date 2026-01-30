@@ -88,15 +88,26 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     // Jacobian
     // note that pvMatrix is column-major
+    // let J0 = vec3<f32>(
+    //     (pvMatrix[0][0] * c.w - pvMatrix[0][3] * c.x) * inv_c_w2,
+    //     (pvMatrix[1][0] * c.w - pvMatrix[1][3] * c.x) * inv_c_w2,
+    //     (pvMatrix[2][0] * c.w - pvMatrix[2][3] * c.x) * inv_c_w2
+    // );
+    // let J1 = vec3<f32>(
+    //     (pvMatrix[0][1] * c.w - pvMatrix[0][3] * c.y) * inv_c_w2,
+    //     (pvMatrix[1][1] * c.w - pvMatrix[1][3] * c.y) * inv_c_w2,
+    //     (pvMatrix[2][1] * c.w - pvMatrix[2][3] * c.y) * inv_c_w2
+    // );
+
     let J0 = vec3<f32>(
-        (pvMatrix[0][0] * c.w - pvMatrix[0][3] * c.x) * inv_c_w2,
-        (pvMatrix[1][0] * c.w - pvMatrix[1][3] * c.x) * inv_c_w2,
-        (pvMatrix[2][0] * c.w - pvMatrix[2][3] * c.x) * inv_c_w2
+        (pvMatrix[0][0] * c.w - pvMatrix[3][0] * c.x) * inv_c_w2,
+        (pvMatrix[0][1] * c.w - pvMatrix[3][1] * c.x) * inv_c_w2,
+        (pvMatrix[0][2] * c.w - pvMatrix[3][2] * c.x) * inv_c_w2
     );
     let J1 = vec3<f32>(
-        (pvMatrix[0][1] * c.w - pvMatrix[0][3] * c.y) * inv_c_w2,
-        (pvMatrix[1][1] * c.w - pvMatrix[1][3] * c.y) * inv_c_w2,
-        (pvMatrix[2][1] * c.w - pvMatrix[2][3] * c.y) * inv_c_w2
+        (pvMatrix[1][0] * c.w - pvMatrix[3][0] * c.y) * inv_c_w2,
+        (pvMatrix[1][1] * c.w - pvMatrix[3][1] * c.y) * inv_c_w2,
+        (pvMatrix[1][2] * c.w - pvMatrix[3][2] * c.y) * inv_c_w2
     );
 
     // transformed covariance = J * cov * J^T

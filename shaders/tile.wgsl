@@ -54,35 +54,34 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let xF = ((v.pos.x + 1.0) * 0.5) * f32(params.gridX);
     let yF = ((v.pos.y + 1.0) * 0.5) * f32(params.gridY);
 
-    // integer tile coordinates
-    let tileX0 = i32(floor(xF));
-    let tileY0 = i32(floor(yF));
-    if (tileX0 >= 0 && tileX0 < i32(params.gridX) &&
-        tileY0 >= 0 && tileY0 < i32(params.gridY)) {
-        tryPush(toIndex(tileX0, tileY0), i);
+    let cxx = v.cov1.x;
+    let cxy = v.cov1.y;
+    let cyy = v.cov1.z;
+
+    let trace = cxx + cyy;
+    let det = cxx * cyy - cxy * cxy;
+    if (det <= 0.0) {
+        return; // broken, skip
     }
+    let temp = trace * trace - 4.0 * det;
+    let lambda1 = 0.5 * (trace + sqrt(temp));
+    let lambda2 = 0.5 * (trace - sqrt(temp));
 
-    // feel free to comment out down here
+    let maxRadius = 3.0 * sqrt(lambda1); // 3 sigma
 
-    // vertical neighbor
-    let dy = yF - f32(tileY0);
-    var verticalY = tileY0 + 1;
-    if (dy < 0.5) { verticalY = tileY0 - 1; };
-    if (verticalY >= 0 && verticalY < i32(params.gridY)) {
-        tryPush(toIndex(tileX0, verticalY), i);
-    }
+    let minX = v.pos.x - maxRadius;
+    let maxX = v.pos.x + maxRadius;
+    let minY = v.pos.y - maxRadius;
+    let maxY = v.pos.y + maxRadius;
 
-    // horizontal neighbor
-    let dx = xF - f32(tileX0);
-    var horizontalX = tileX0 + 1;
-    if (dx < 0.5) { horizontalX = tileX0 - 1; };
-    if (horizontalX >= 0 && horizontalX < i32(params.gridX)) {
-        tryPush(toIndex(horizontalX, tileY0), i);
-    }
+    let x0 = clamp(i32(floor((minX + 1.0)*0.5 * f32(params.gridX))), 0, i32(params.gridX)-1);
+    let x1 = clamp(i32(floor((maxX + 1.0)*0.5 * f32(params.gridX))), 0, i32(params.gridX)-1);
+    let y0 = clamp(i32(floor((minY + 1.0)*0.5 * f32(params.gridY))), 0, i32(params.gridY)-1);
+    let y1 = clamp(i32(floor((maxY + 1.0)*0.5 * f32(params.gridY))), 0, i32(params.gridY)-1);
 
-    // diagonal neighbor
-    if (verticalY >= 0 && verticalY < i32(params.gridY) &&
-        horizontalX >= 0 && horizontalX < i32(params.gridX)) {
-        tryPush(toIndex(horizontalX, verticalY), i);
+    for (var ty = y0; ty <= y1; ty = ty + 1) {
+        for (var tx = x0; tx <= x1; tx = tx + 1) {
+            tryPush(toIndex(tx, ty), i);
+        }
     }
 }
