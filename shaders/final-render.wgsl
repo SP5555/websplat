@@ -66,7 +66,7 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         // uv is in [0,1]
         let fragNDC = uv * 2.0 - vec2<f32>(1.0);
 
-        let dx = (fragNDC.x - v.pos.x) * aspect;
+        let dx = fragNDC.x - v.pos.x;
         let dy = fragNDC.y - v.pos.y;
 
         let cxx = v.cov1.x;

@@ -84,6 +84,11 @@ export default class PLYLoader {
             rotations[i * 4 + 2] = dataView.getFloat32(baseOffset + idx.rot2 * floatSize, true);
             rotations[i * 4 + 3] = dataView.getFloat32(baseOffset + idx.rot3 * floatSize, true);
 
+            // rotations[i * 4 + 0] = 0;
+            // rotations[i * 4 + 1] = 0;
+            // rotations[i * 4 + 2] = 0;
+            // rotations[i * 4 + 3] = 0;
+            
             colors[i * 3 + 0] = dataView.getFloat32(baseOffset + idx.color0 * floatSize, true);
             colors[i * 3 + 1] = dataView.getFloat32(baseOffset + idx.color1 * floatSize, true);
             colors[i * 3 + 2] = dataView.getFloat32(baseOffset + idx.color2 * floatSize, true);
