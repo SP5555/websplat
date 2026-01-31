@@ -28,6 +28,7 @@ export default class Renderer {
         this.isPipelineInitialized = false;
 
         // buffer limit size = 2^27 bytes
+        // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
         this.GRID_SIZE = { x: 64, y: 32 };
         this.MAX_VERTICES_PER_TILE = 4096;
 

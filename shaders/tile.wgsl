@@ -67,7 +67,8 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let lambda1 = 0.5 * (trace + sqrt(temp));
     let lambda2 = 0.5 * (trace - sqrt(temp));
 
-    let maxRadius = 3.0 * sqrt(lambda1); // 3 sigma
+    let max = max(lambda1, lambda2);
+    let maxRadius = 3.0 * sqrt(max); // 3 sigma
 
     let minX = v.pos.x - maxRadius;
     let maxX = v.pos.x + maxRadius;

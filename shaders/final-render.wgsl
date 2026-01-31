@@ -55,9 +55,6 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
 
     let count = tileCounters[tileIndex];
 
-    let r = 0.01; // splat radius in [0..1] screen space
-    let sigma = r * 0.5; // adjust as needed
-
     var accumColor = vec3<f32>(0.0);
     var accumAlpha = 0.0;
 
@@ -72,8 +69,8 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         let dx = (fragNDC.x - v.pos.x) * aspect;
         let dy = fragNDC.y - v.pos.y;
 
-        let cxx = v.cov1.x * aspect * aspect;
-        let cxy = v.cov1.y * aspect;
+        let cxx = v.cov1.x;
+        let cxy = v.cov1.y;
         let cyy = v.cov1.z;
 
         let det = cxx * cyy - cxy * cxy;
@@ -91,7 +88,7 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
 
         if (dist2 < 9.0) { // 3 sigma
             let weight = exp(-dist2 * 0.5);
-            let alpha = v.opacity * weight;
+            let alpha = clamp(v.opacity * weight, 0.0, 1.0);
 
             accumColor += (1.0 - accumAlpha) * v.color * alpha;
             accumAlpha += (1.0 - accumAlpha) * alpha;
