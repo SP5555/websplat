@@ -31,7 +31,7 @@ struct Vertex {
 @group(0) @binding(1) var<storage, read> vertices : array<Vertex>;
 @group(0) @binding(2) var<storage, read_write> outVertices : array<Vertex>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
     if (i >= arrayLength(&vertices)) { return; }

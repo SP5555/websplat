@@ -21,10 +21,10 @@ export function GaussianPrecompute(raw) {
 
         // convert quaternion to rotation matrix
         const q = quat.fromValues(
-            rotations[i*4 + 0],
-            rotations[i*4 + 1],
-            rotations[i*4 + 2],
-            rotations[i*4 + 3]
+            rotations[i*4 + 0], // x
+            rotations[i*4 + 1], // y
+            rotations[i*4 + 2], // z
+            rotations[i*4 + 3]  // w
         );
         quat.normalize(q, q);
         mat3.fromQuat(R, q);

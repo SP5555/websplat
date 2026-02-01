@@ -79,15 +79,12 @@ export default class PLYLoader {
             scales[i * 3 + 1] = dataView.getFloat32(baseOffset + idx.scale1 * floatSize, true);
             scales[i * 3 + 2] = dataView.getFloat32(baseOffset + idx.scale2 * floatSize, true);
 
-            rotations[i * 4 + 0] = dataView.getFloat32(baseOffset + idx.rot0 * floatSize, true);
-            rotations[i * 4 + 1] = dataView.getFloat32(baseOffset + idx.rot1 * floatSize, true);
-            rotations[i * 4 + 2] = dataView.getFloat32(baseOffset + idx.rot2 * floatSize, true);
-            rotations[i * 4 + 3] = dataView.getFloat32(baseOffset + idx.rot3 * floatSize, true);
-
-            // rotations[i * 4 + 0] = 0;
-            // rotations[i * 4 + 1] = 0;
-            // rotations[i * 4 + 2] = 0;
-            // rotations[i * 4 + 3] = 0;
+            // tf is this???
+            // want (x,y,z,w) but stored as (w,x,y,z)
+            rotations[i * 4 + 0] = dataView.getFloat32(baseOffset + idx.rot1 * floatSize, true);
+            rotations[i * 4 + 1] = dataView.getFloat32(baseOffset + idx.rot2 * floatSize, true);
+            rotations[i * 4 + 2] = dataView.getFloat32(baseOffset + idx.rot3 * floatSize, true);
+            rotations[i * 4 + 3] = dataView.getFloat32(baseOffset + idx.rot0 * floatSize, true);
             
             colors[i * 3 + 0] = dataView.getFloat32(baseOffset + idx.color0 * floatSize, true);
             colors[i * 3 + 1] = dataView.getFloat32(baseOffset + idx.color1 * floatSize, true);

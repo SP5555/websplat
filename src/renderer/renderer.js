@@ -369,7 +369,7 @@ export default class Renderer {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.transformPipeline);
             pass.setBindGroup(0, this.transformBindGroup);
-            const WGSize = 256;
+            const WGSize = 128;
             const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
@@ -380,7 +380,7 @@ export default class Renderer {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.tilePipeline);
             pass.setBindGroup(0, this.tileBindGroup);
-            const WGSize = 256;
+            const WGSize = 128;
             const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
