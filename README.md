@@ -1,6 +1,13 @@
 # WebSplat
 
-A fun little 3DGS scene renderer implemented with WebGPU! Don't expect much, I haven't done anything. Chill.
+A fun little 3DGS scene renderer implemented in WebGPU! Currently slower than a snail on vacation.
+
+> [!NOTE]
+> Hmmm
+
+## TODO
+- [ ] Optimizations, ofc.
+- [X] Nothing
 
 ---
 

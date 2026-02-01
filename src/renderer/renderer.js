@@ -16,14 +16,12 @@ export default class Renderer {
         this.floatsPerVertex = 0;
 
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
-        this.cameraBuffer = null;
-        this.cameraBindGroup = null;
 
         // 4 stage pipeline
         this.transformPipeline = null;
         this.tilePipeline = null;
         this.sortPipeline = null;
-        this.finalRenderPipeline = null;
+        this.renderPipeline = null;
 
         this.isPipelineInitialized = false;
 
@@ -77,7 +75,7 @@ export default class Renderer {
         this.createTransformPipeline();
         this.createTilePipeline();
         this.createSortPipeline();
-        this.createFinalRenderPipeline();
+        this.createRenderPipeline();
 
         this.isPipelineInitialized = true;
     }
@@ -92,8 +90,8 @@ export default class Renderer {
         this.sortShader = new WGSLShader(this.device, './shaders/sort.wgsl');
         await this.sortShader.load();
 
-        this.finalRenderShader = new WGSLShader(this.device, './shaders/final-render.wgsl');
-        await this.finalRenderShader.load();
+        this.renderShader = new WGSLShader(this.device, './shaders/render.wgsl');
+        await this.renderShader.load();
     }
 
     createDataBuffers() {
@@ -210,25 +208,25 @@ export default class Renderer {
         });
     }
 
-    createFinalRenderPipeline() {
-        this.finalRenderPipeline = this.device.createRenderPipeline({
-            label: "Final Render Pipeline",
+    createRenderPipeline() {
+        this.renderPipeline = this.device.createRenderPipeline({
+            label: "Render Pipeline",
             layout: 'auto',
             vertex: {
-                module: this.finalRenderShader.getModule(),
+                module: this.renderShader.getModule(),
                 entryPoint: 'vs_main',
                 buffers: [] // fullscreen triangle
             },
             fragment: {
-                module: this.finalRenderShader.getModule(),
+                module: this.renderShader.getModule(),
                 entryPoint: 'fs_main',
                 targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
             },
             primitive: { topology: 'triangle-list' }
         });
 
-        this.finalRenderBindGroup = this.device.createBindGroup({
-            layout: this.finalRenderPipeline.getBindGroupLayout(0),
+        this.renderBindGroup = this.device.createBindGroup({
+            layout: this.renderPipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.transformOutputBuffer } },
                 { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
@@ -342,8 +340,8 @@ export default class Renderer {
             ]
         });
 
-        this.finalRenderBindGroup = this.device.createBindGroup({
-            layout: this.finalRenderPipeline.getBindGroupLayout(0),
+        this.renderBindGroup = this.device.createBindGroup({
+            layout: this.renderPipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.transformOutputBuffer } },
                 { binding: 1, resource: { buffer: this.tileVertIdxBuffer } },
@@ -406,8 +404,8 @@ export default class Renderer {
                     storeOp: 'store'
                 }]
             });
-            pass.setPipeline(this.finalRenderPipeline);
-            pass.setBindGroup(0, this.finalRenderBindGroup);
+            pass.setPipeline(this.renderPipeline);
+            pass.setBindGroup(0, this.renderBindGroup);
             pass.draw(3); // fullscreen triangle
             pass.end();
         }

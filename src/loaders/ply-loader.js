@@ -133,15 +133,14 @@ export default class PLYLoader {
             y *= scale;
             z *= scale;
 
+            positions[i * 3 + 0] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
+
             // apply expf and scale
             scales[i * 3 + 0] = this.expf(scales[i * 3 + 0]) * scale;
             scales[i * 3 + 1] = this.expf(scales[i * 3 + 1]) * scale;
             scales[i * 3 + 2] = this.expf(scales[i * 3 + 2]) * scale;
-
-            // y and z flip
-            positions[i * 3 + 0] = x;
-            positions[i * 3 + 1] = y;
-            positions[i * 3 + 2] = z;
 
             // apply sigmoid to opacities
             opacities[i] = this.sigmoid(opacities[i]);
@@ -151,6 +150,8 @@ export default class PLYLoader {
             colors[i * 3 + 1] = colors[i * 3 + 1] * C0 + 0.5;
             colors[i * 3 + 2] = colors[i * 3 + 2] * C0 + 0.5;
         }
+
+        console.log(`Loaded PLY: ${vertexCount} vertices`);
 
         return {
             vertexCount,
