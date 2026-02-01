@@ -1,9 +1,9 @@
 # WebSplat
 
-A fun little 3DGS scene renderer implemented in WebGPU! Currently slower than a snail on vacation.
+A fun little 3DGS scene renderer implemented in WebGPU!
 
 > [!NOTE]
-> Hmmm
+> Currently slower than a snail on vacation.
 
 ## TODO
 - [ ] Optimizations, ofc.
