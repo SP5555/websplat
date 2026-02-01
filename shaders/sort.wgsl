@@ -1,4 +1,4 @@
-const THREADS_PER_WORKGROUP = 128u;
+const THREADS_PER_WORKGROUP = 256u;
 
 struct Vertex {
     pos : vec3<f32>,

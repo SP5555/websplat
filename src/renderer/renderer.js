@@ -29,8 +29,8 @@ export default class Renderer {
 
         // buffer limit size = 2^27 bytes
         // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
-        this.GRID_SIZE = { x: 64, y: 32 };
-        this.MAX_VERTICES_PER_TILE = 4096;
+        this.GRID_SIZE = { x: 32, y: 32 };
+        this.MAX_VERTICES_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
         this.init();
     }
@@ -369,7 +369,7 @@ export default class Renderer {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.transformPipeline);
             pass.setBindGroup(0, this.transformBindGroup);
-            const WGSize = 128;
+            const WGSize = 256;
             const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
@@ -380,7 +380,7 @@ export default class Renderer {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.tilePipeline);
             pass.setBindGroup(0, this.tileBindGroup);
-            const WGSize = 128;
+            const WGSize = 256;
             const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();

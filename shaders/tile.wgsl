@@ -38,7 +38,7 @@ fn tryPush(tileIdx: u32, vertexIdx: u32) {
     }
 }
 
-@compute @workgroup_size(128)
+@compute @workgroup_size(256)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
     if (i >= params.vertexCount) { return; }
