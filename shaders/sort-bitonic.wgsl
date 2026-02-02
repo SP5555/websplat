@@ -96,7 +96,6 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
             j = j >> 1u;
         }
 
-        workgroupBarrier();
         k = k << 1u;
     }
 }
