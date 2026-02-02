@@ -23,18 +23,11 @@ fn toIndex(x : i32, y : i32) -> u32 {
 }
 
 fn tryPush(tileIdx: u32, vertexIdx: u32) {
-    loop {
-        let old = atomicLoad(&tileCounters[tileIdx]);
-        if (old >= params.maxPerTile) {
-            return;
-        }
-
-        // bruh
-        if (atomicCompareExchangeWeak(&tileCounters[tileIdx], old, old + 1u).exchanged) {
-            let offset = tileIdx * params.maxPerTile + old;
-            tileIndices[offset] = vertexIdx;
-            return;
-        }
+    // note: atomicAdd will overshoot the max
+    // be sure to clamp the counter afterwards
+    let idx = atomicAdd(&tileCounters[tileIdx], 1u);
+    if (idx < params.maxPerTile) {
+        tileIndices[tileIdx * params.maxPerTile + idx] = vertexIdx;
     }
 }
 

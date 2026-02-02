@@ -1,6 +1,7 @@
 struct Camera {
     vMatrix : mat4x4<f32>,
     pMatrix : mat4x4<f32>,
+    pvMatrix : mat4x4<f32>,
 };
 
 struct Vertex {
@@ -38,10 +39,10 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     let v = vertices[i];
 
-    let pvMatrix = camera.pMatrix * camera.vMatrix;
+    let pvM4x4 = camera.pvMatrix;
 
     /* ===== position transform ===== */
-    let c = pvMatrix * vec4<f32>(v.pos.xyz, 1.0);
+    let c = pvM4x4 * vec4<f32>(v.pos.xyz, 1.0);
     // perspective divide
     let transformedPos = vec3<f32>(
         c.x / c.w,
@@ -85,16 +86,16 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
             [ (PV10*c_w-PV30*c_y)/c_w^2  (PV11*c_w-PV31*c_y)/c_w^2  (PV12*c_w-PV32*c_y)/c_w^2 ]
     */
     // Jacobian
-    // note that pvMatrix is column-major
+    // note that pvM4x4 is column-major
     let JR0 = vec3<f32>(
-        (pvMatrix[0][0] * c.w - pvMatrix[0][3] * c.x) * inv_c_w2,
-        (pvMatrix[1][0] * c.w - pvMatrix[1][3] * c.x) * inv_c_w2,
-        (pvMatrix[2][0] * c.w - pvMatrix[2][3] * c.x) * inv_c_w2
+        (pvM4x4[0][0] * c.w - pvM4x4[0][3] * c.x) * inv_c_w2,
+        (pvM4x4[1][0] * c.w - pvM4x4[1][3] * c.x) * inv_c_w2,
+        (pvM4x4[2][0] * c.w - pvM4x4[2][3] * c.x) * inv_c_w2
     );
     let JR1 = vec3<f32>(
-        (pvMatrix[0][1] * c.w - pvMatrix[0][3] * c.y) * inv_c_w2,
-        (pvMatrix[1][1] * c.w - pvMatrix[1][3] * c.y) * inv_c_w2,
-        (pvMatrix[2][1] * c.w - pvMatrix[2][3] * c.y) * inv_c_w2
+        (pvM4x4[0][1] * c.w - pvM4x4[0][3] * c.y) * inv_c_w2,
+        (pvM4x4[1][1] * c.w - pvM4x4[1][3] * c.y) * inv_c_w2,
+        (pvM4x4[2][1] * c.w - pvM4x4[2][3] * c.y) * inv_c_w2
     );
 
     // transformed covariance = J * cov * J^T

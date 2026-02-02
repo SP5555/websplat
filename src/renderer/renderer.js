@@ -25,6 +25,10 @@ export default class Renderer {
 
         this.isPipelineInitialized = false;
 
+        // empty buffers
+        this.tileVertIdxArray = null;
+        this.tileCountersArray = null;
+
         // buffer limit size = 2^27 bytes
         // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
         this.GRID_SIZE = { x: 32, y: 32 };
@@ -87,7 +91,7 @@ export default class Renderer {
         this.tileShader = new WGSLShader(this.device, './shaders/tile.wgsl');
         await this.tileShader.load();
 
-        this.sortShader = new WGSLShader(this.device, './shaders/sort.wgsl');
+        this.sortShader = new WGSLShader(this.device, './shaders/sort-oe.wgsl');
         await this.sortShader.load();
 
         this.renderShader = new WGSLShader(this.device, './shaders/render.wgsl');
@@ -97,7 +101,7 @@ export default class Renderer {
     createDataBuffers() {
         this.cameraBuffer = this.device.createBuffer({
             label: "Camera Buffer",
-            size: 2 * 16 * 4,
+            size: 3 * 16 * 4, // 3x mat4x4<f32>
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
 
@@ -116,7 +120,7 @@ export default class Renderer {
         this.tileVertIdxBuffer = this.device.createBuffer({
             label: "Tile Vertex Index Buffer",
             size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
-            usage: GPUBufferUsage.STORAGE
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         // tile counter is reset each frame, requires COPY_DST
@@ -144,6 +148,9 @@ export default class Renderer {
         });
         const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
         this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
+
+        this.tileVertIdxArray = new Uint32Array(this.tileVertIdxBuffer.size / 4).fill(0xFFFFFFFF);
+        this.tileCountersArray = new Uint32Array(this.tileCountersBuffer.size / 4).fill(0);
     }
 
     createTransformPipeline() {
@@ -285,6 +292,9 @@ export default class Renderer {
             this.MAX_VERTICES_PER_TILE
         ]);
 
+        this.tileVertIdxArray = new Uint32Array(this.tileVertIdxBuffer.size / 4).fill(0xFFFFFFFF);
+        this.tileCountersArray = new Uint32Array(this.tileCountersBuffer.size / 4).fill(0);
+
         this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.tileParamsBuffer, 0, tileParams.buffer);
     }
@@ -308,7 +318,7 @@ export default class Renderer {
         this.tileVertIdxBuffer = this.device.createBuffer({
             label: "Tile Vertex Index Buffer",
             size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
-            usage: GPUBufferUsage.STORAGE
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         this.transformBindGroup = this.device.createBindGroup({
@@ -357,8 +367,16 @@ export default class Renderer {
         if (!this.device || !this.context || !this.isPipelineInitialized) return;
 
         this.updateCameraBuffer(dt);
-
-        this.device.queue.writeBuffer(this.tileCountersBuffer, 0, new Uint32Array(this.tileCountersBuffer.size / 4).fill(0).buffer);
+        this.device.queue.writeBuffer(
+            this.tileVertIdxBuffer,
+            0,
+            this.tileVertIdxArray.buffer
+        );
+        this.device.queue.writeBuffer(
+            this.tileCountersBuffer,
+            0,
+            this.tileCountersArray.buffer
+        );
 
         const encoder = this.device.createCommandEncoder();
 
@@ -416,9 +434,10 @@ export default class Renderer {
     updateCameraBuffer(dt) {
         this.camera.update(dt);
 
-        const cameraData = new Float32Array(32);
+        const cameraData = new Float32Array(48);
         cameraData.set(this.camera.vMatrix, 0);
         cameraData.set(this.camera.pMatrix, 16);
+        cameraData.set(this.camera.pvMatrix, 32);
 
         this.device.queue.writeBuffer(this.cameraBuffer, 0, cameraData.buffer);
     }

@@ -1,4 +1,4 @@
-// this one is a faster variant of sort.wgsl
+// this one is a faster variant of sort-oe.wgsl
 // but can only handle up to 2048 vertices per tile
 
 const THREADS_PER_WORKGROUP = 128u;

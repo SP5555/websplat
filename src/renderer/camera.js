@@ -36,6 +36,8 @@ export default class Camera {
         this.far = 100.0;
         this.pMatrix = mat4.perspective(mat4.create(), this.fov, this.aspect, this.near, this.far);
 
+        this.pvMatrix = mat4.create();
+
         this.initializeEventListeners();
     }
 
@@ -114,16 +116,23 @@ export default class Camera {
         }
 
         this.updateViewSpaceVectors();
+        this.updateMatrices();
+    }
+    
+    updateMatrices() {
         mat4.lookAt(this.vMatrix, this.position, this.target, this.up);
+        mat4.multiply(this.pvMatrix, this.pMatrix, this.vMatrix);
     }
 
     updateAspect(aspect) {
         this.aspect = aspect;
         mat4.perspective(this.pMatrix, this.fov, this.aspect, this.near, this.far);
+        this.updateMatrices();
     }
 
     updateFOV(fovDegrees) {
         this.fov = fovDegrees * Math.PI / 180;
         mat4.perspective(this.pMatrix, this.fov, this.aspect, this.near, this.far);
+        this.updateMatrices();
     }
 }

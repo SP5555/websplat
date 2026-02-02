@@ -49,17 +49,17 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     // Compute which tile this fragment belongs to
     let tileX = u32(clamp(floor(uv.x * f32(params.gridX)), 0.0, f32(params.gridX - 1)));
     let tileY = u32(clamp(floor(uv.y * f32(params.gridY)), 0.0, f32(params.gridY - 1)));
-    let tileIndex = u32(tileY * params.gridX + tileX);
+    let tileID = u32(tileY * params.gridX + tileX);
 
     let aspect = f32(canvasParams.width) / f32(canvasParams.height);
 
-    let count = tileCounters[tileIndex];
+    let count = min(tileCounters[tileID], params.maxPerTile);
 
     var accumColor = vec3<f32>(0.0);
     var accumAlpha = 0.0;
 
     for (var i = 0u; i < count; i = i + 1u) {
-        let v = vertices[tileIndices[tileIndex * params.maxPerTile + i]];
+        let v = vertices[tileIndices[tileID * params.maxPerTile + i]];
 
         // Compare fragment in NCD with vertex position in NDC
         // pos is in normalized clip space [-1,1]

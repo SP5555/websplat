@@ -10,7 +10,7 @@ export default class HUDManager {
 
     updateFPS(intervalTime, frameCount) {
         const fps = frameCount / intervalTime;
-        this.weightedAvgFPS = this.weightedAvgFPS * 0.6 + fps * 0.4;
+        this.weightedAvgFPS = this.weightedAvgFPS * 0.4 + fps * 0.6;
         this.fpsElement.textContent = this.weightedAvgFPS.toFixed(1);
         this.frameTimeElement.textContent = (1000 / this.weightedAvgFPS).toFixed(2);
     }

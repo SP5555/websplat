@@ -27,7 +27,7 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     let threadID = thread_local_id.x;
     let tileID = workgroup_id.x;
 
-    let idxCountInTile = tileCounters[tileID];
+    let idxCountInTile = min(tileCounters[tileID], params.maxPerTile);
     // empty tile
     if (idxCountInTile == 0u) { return; }
 
