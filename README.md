@@ -7,6 +7,7 @@ A fun little 3DGS scene renderer implemented in WebGPU!
 
 ## TODO
 - [ ] Optimizations, ofc.
+- [ ] Bitonic Sorting Pass
 - [X] Nothing
 
 ---

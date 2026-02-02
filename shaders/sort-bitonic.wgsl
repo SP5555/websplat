@@ -25,75 +25,78 @@ struct TileParams {
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(3) var<storage, read> params : TileParams;
 
-@compute @workgroup_size(THREADS_PER_WORKGROUP)
-fn cs_main(
-    @builtin(local_invocation_id) lid : vec3<u32>,
-    @builtin(workgroup_id) wid : vec3<u32>
-) {
-    let tid = lid.x;
-    let tileID = wid.x;
+fn compare_and_swap(leftIdx: u32, rightIdx: u32, maxIndices: u32) {
+    let leftVertexIdx = tileIndices[leftIdx];
+    let rightVertexIdx = tileIndices[rightIdx];
 
-    let count = min(tileCounters[tileID], params.maxPerTile);
+    if (leftIdx >= maxIndices || rightIdx >= maxIndices) {
+        return;
+    }
+
+    let leftZ = vertices[leftVertexIdx].pos.z;
+    let rightZ = vertices[rightVertexIdx].pos.z;
+    if (leftZ < rightZ) {
+        tileIndices[leftIdx] = rightVertexIdx;
+        tileIndices[rightIdx] = leftVertexIdx;
+    }
+}
+
+@compute @workgroup_size(THREADS_PER_WORKGROUP)
+fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
+           @builtin(workgroup_id) workgroup_id : vec3<u32>) {
+    
+    let threadID = thread_local_id.x;
+    let tileID = workgroup_id.x;
+    let MAX_PER_TILE = params.maxPerTile;
+    let count = min(tileCounters[tileID], MAX_PER_TILE);
     if (count <= 1u) { return; }
 
-    let base = tileID * params.maxPerTile;
-    let N = params.maxPerTile; // power-of-two
+    // bitonic must operate on the whole array of size MAX_PER_TILE
+    // thus, unused index slots are filled with max Uint32 value
+    let compsPerThread = (MAX_PER_TILE + THREADS_PER_WORKGROUP - 1u) / THREADS_PER_WORKGROUP;
+    let baseIdx = tileID * MAX_PER_TILE;
 
-    // Bitonic sort (ascending by z)
+    // bitonic sort in global memory
     var k = 2u;
-    loop {
-        if (k > N) { break; }
+    while (k <= MAX_PER_TILE) {
 
+        /* ===== FLIP BLOCK ===== */
+        // each thread handles multiple comparisons if needed
+        for (var i = 0u; i < compsPerThread; i = i + 1u) {
+
+            let idxL = i * THREADS_PER_WORKGROUP + threadID;
+
+            // bitwise XOR magic
+            let idxR = idxL ^ (k - 1);
+
+            if (idxL < idxR) {
+                compare_and_swap(baseIdx + idxL, baseIdx + idxR, count);
+            }
+        }
+        workgroupBarrier();
+
+        /* ===== DISPERSE BLOCK ===== */
         var j = k >> 1u;
-        loop {
-            if (j == 0u) { break; }
+        while (j > 0u) {
 
-            // total comparisons = N / 2
-            let totalPairs = N >> 1u;
-            let pairsPerThread = (totalPairs + THREADS_PER_WORKGROUP - 1u) / THREADS_PER_WORKGROUP;
+            // each thread handles multiple comparisons if needed
+            for (var i = 0u; i < compsPerThread; i = i + 1u) {
 
-            for (var p = 0u; p < pairsPerThread; p++) {
-                let pairIdx = p * THREADS_PER_WORKGROUP + tid;
-                if (pairIdx >= totalPairs) { continue; }
+                let idxL = i * THREADS_PER_WORKGROUP + threadID;
 
-                let i = pairIdx * 2u;
-                let ixj = i ^ j;
+                // another bitwise XOR magic
+                let idxR = idxL ^ j;
 
-                if (ixj > i) {
-                    let ascending = ((i & k) == 0u);
-
-                    let aIdx = base + i;
-                    let bIdx = base + ixj;
-
-                    let a = tileIndices[aIdx];
-                    let b = tileIndices[bIdx];
-
-                    // sentinel-safe
-                    let za = select(
-                        vertices[a].pos.z,
-                        1e30,
-                        a == 0xFFFFFFFFu
-                    );
-                    let zb = select(
-                        vertices[b].pos.z,
-                        1e30,
-                        b == 0xFFFFFFFFu
-                    );
-
-                    let shouldSwap =
-                        select(za > zb, za < zb, ascending);
-
-                    if (shouldSwap) {
-                        tileIndices[aIdx] = b;
-                        tileIndices[bIdx] = a;
-                    }
+                if (idxL < idxR) {
+                    compare_and_swap(baseIdx + idxL, baseIdx + idxR, count);
                 }
             }
 
             workgroupBarrier();
-            j >>= 1u;
+            j = j >> 1u;
         }
+        workgroupBarrier();
 
-        k <<= 1u;
+        k = k << 1u;
     }
 }

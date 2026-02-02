@@ -29,9 +29,9 @@ export default class Renderer {
         this.tileVertIdxArray = null;
         this.tileCountersArray = null;
 
-        // buffer limit size = 2^27 bytes
+        // max buffer size limit = 2^27 bytes
         // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
-        this.GRID_SIZE = { x: 32, y: 32 };
+        this.GRID_SIZE = { x: 128, y: 128 };
         this.MAX_VERTICES_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
         this.init();

@@ -67,9 +67,8 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
 
             // swap if out of order (farther vertex has larger z in NDC)
             if (leftZ > rightZ) {
-                let tmp = tileIndices[leftIdx];
-                tileIndices[leftIdx] = tileIndices[rightIdx];
-                tileIndices[rightIdx] = tmp;
+                tileIndices[leftIdx] = rightVertexIdx;
+                tileIndices[rightIdx] = leftVertexIdx;
             }
         }
         // synchronize all threads before next iteration
