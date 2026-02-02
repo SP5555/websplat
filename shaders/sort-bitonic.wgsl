@@ -26,20 +26,26 @@ struct TileParams {
 @group(0) @binding(3) var<storage, read> params : TileParams;
 
 fn compare_and_swap(leftIdx: u32, rightIdx: u32, maxIndices: u32) {
+    var leftZ : f32 = 1.0;
+    var rightZ : f32 = 1.0;
+
     let leftVertexIdx = tileIndices[leftIdx];
     let rightVertexIdx = tileIndices[rightIdx];
 
-    if (leftIdx >= maxIndices || rightIdx >= maxIndices) {
-        return;
+    if (leftIdx < maxIndices) {
+        leftZ = vertices[leftVertexIdx].pos.z;
     }
 
-    let leftZ = vertices[leftVertexIdx].pos.z;
-    let rightZ = vertices[rightVertexIdx].pos.z;
-    if (leftZ < rightZ) {
+    if (rightIdx < maxIndices) {
+        rightZ = vertices[rightVertexIdx].pos.z;
+    }
+
+    if (leftZ > rightZ) {
         tileIndices[leftIdx] = rightVertexIdx;
         tileIndices[rightIdx] = leftVertexIdx;
     }
 }
+
 
 @compute @workgroup_size(THREADS_PER_WORKGROUP)
 fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
@@ -48,8 +54,9 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     let threadID = thread_local_id.x;
     let tileID = workgroup_id.x;
     let MAX_PER_TILE = params.maxPerTile;
+
     let count = min(tileCounters[tileID], MAX_PER_TILE);
-    if (count <= 1u) { return; }
+    if (count == 0u) { return; }
 
     // bitonic must operate on the whole array of size MAX_PER_TILE
     // thus, unused index slots are filled with max Uint32 value
@@ -95,8 +102,8 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
             workgroupBarrier();
             j = j >> 1u;
         }
-        workgroupBarrier();
 
+        workgroupBarrier();
         k = k << 1u;
     }
 }

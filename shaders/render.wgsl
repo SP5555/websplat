@@ -100,5 +100,8 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
+    // let debug = f32(count) / f32(params.maxPerTile);
+    // return vec4<f32>(debug, debug, debug, 1.0);
+
     return vec4<f32>(accumColor, 1.0);
 }

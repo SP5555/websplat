@@ -33,7 +33,7 @@ export default class Camera {
         this.fov = 60 * Math.PI / 180; // in radians
         this.aspect = aspect;
         this.near = 0.01;
-        this.far = 100.0;
+        this.far = 50.0;
         this.pMatrix = mat4.perspective(mat4.create(), this.fov, this.aspect, this.near, this.far);
 
         this.pvMatrix = mat4.create();
