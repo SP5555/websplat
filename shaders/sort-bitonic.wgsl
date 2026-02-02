@@ -1,7 +1,10 @@
-// this sort requires each tile to hold 2^n indices.
-// runs O((log^2)n)
-
-// IMPLEMENTATION IS NOT CORRECT YET
+/* ===== Modified version of the Bitonic Sort ===== */
+/*
+    Each tile must hold 2^n indices.
+    Complexity: O((log^2)n), massively parallel sorting algorithm.
+    Sentinel indices (0xFFFFFFFF) are used for unused slots.
+    Designed for one workgroup per tile.
+*/
 
 const THREADS_PER_WORKGROUP = 256u;
 
@@ -25,27 +28,18 @@ struct TileParams {
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(3) var<storage, read> params : TileParams;
 
-fn compare_and_swap(leftIdx: u32, rightIdx: u32, maxIndices: u32) {
-    var leftZ : f32 = 1.0;
-    var rightZ : f32 = 1.0;
-
-    let leftVertexIdx = tileIndices[leftIdx];
+fn compare_and_swap(leftIdx: u32, rightIdx: u32) {
+    let leftVertexIdx  = tileIndices[leftIdx];
     let rightVertexIdx = tileIndices[rightIdx];
 
-    if (leftIdx < maxIndices) {
-        leftZ = vertices[leftVertexIdx].pos.z;
-    }
-
-    if (rightIdx < maxIndices) {
-        rightZ = vertices[rightVertexIdx].pos.z;
-    }
+    let leftZ  = select(1.0, vertices[leftVertexIdx].pos.z, leftVertexIdx != 0xFFFFFFFF);
+    let rightZ = select(1.0, vertices[rightVertexIdx].pos.z, rightVertexIdx != 0xFFFFFFFF);
 
     if (leftZ > rightZ) {
-        tileIndices[leftIdx] = rightVertexIdx;
+        tileIndices[leftIdx]  = rightVertexIdx;
         tileIndices[rightIdx] = leftVertexIdx;
     }
 }
-
 
 @compute @workgroup_size(THREADS_PER_WORKGROUP)
 fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
@@ -55,8 +49,7 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     let tileID = workgroup_id.x;
     let MAX_PER_TILE = params.maxPerTile;
 
-    let count = min(tileCounters[tileID], MAX_PER_TILE);
-    if (count == 0u) { return; }
+    if (min(tileCounters[tileID], MAX_PER_TILE) == 0u) { return; }
 
     // bitonic must operate on the whole array of size MAX_PER_TILE
     // thus, unused index slots are filled with max Uint32 value
@@ -77,7 +70,7 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
             let idxR = idxL ^ (k - 1);
 
             if (idxL < idxR) {
-                compare_and_swap(baseIdx + idxL, baseIdx + idxR, count);
+                compare_and_swap(baseIdx + idxL, baseIdx + idxR);
             }
         }
         workgroupBarrier();
@@ -95,7 +88,7 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
                 let idxR = idxL ^ j;
 
                 if (idxL < idxR) {
-                    compare_and_swap(baseIdx + idxL, baseIdx + idxR, count);
+                    compare_and_swap(baseIdx + idxL, baseIdx + idxR);
                 }
             }
 

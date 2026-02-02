@@ -2,12 +2,8 @@
 
 A fun little 3DGS scene renderer implemented in WebGPU!
 
-> [!NOTE]
-> Currently slower than a snail on vacation.
-
 ## TODO
 - [ ] Optimizations, ofc.
-- [ ] Bitonic Sorting Pass
 - [X] Nothing
 
 ---

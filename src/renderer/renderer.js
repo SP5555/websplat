@@ -91,7 +91,7 @@ export default class Renderer {
         this.tileShader = new WGSLShader(this.device, './shaders/tile.wgsl');
         await this.tileShader.load();
 
-        this.sortShader = new WGSLShader(this.device, './shaders/sort-oe.wgsl');
+        this.sortShader = new WGSLShader(this.device, './shaders/sort-bitonic.wgsl');
         await this.sortShader.load();
 
         this.renderShader = new WGSLShader(this.device, './shaders/render.wgsl');
