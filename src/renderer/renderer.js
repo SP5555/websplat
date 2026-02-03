@@ -5,6 +5,7 @@ import { MeshBufferBuilder } from "./mesh-buffer-builder.js";
 import WGSLShader from "./wgsl-shader/wgsl-shader.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
+const MAX_UINT32 = 0xFFFFFFFF;
 
 export default class Renderer {
     constructor(input) {
@@ -163,7 +164,7 @@ export default class Renderer {
         const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
         this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
 
-        this.tileIndicesArray = new Uint32Array(this.tileIndicesBuffer.size / 4).fill(0xFFFFFFFF);
+        this.tileIndicesArray = new Uint32Array(this.tileIndicesBuffer.size / 4).fill(MAX_UINT32);
         this.tileCountersArray = new Uint32Array(this.tileCountersBuffer.size / 4).fill(0);
     }
 
@@ -307,7 +308,7 @@ export default class Renderer {
             this.MAX_VERTICES_PER_TILE
         ]);
 
-        this.tileIndicesArray = new Uint32Array(this.tileIndicesBuffer.size / 4).fill(0xFFFFFFFF);
+        this.tileIndicesArray = new Uint32Array(this.tileIndicesBuffer.size / 4).fill(MAX_UINT32);
         this.tileCountersArray = new Uint32Array(this.tileCountersBuffer.size / 4).fill(0);
 
         this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
