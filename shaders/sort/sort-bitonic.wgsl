@@ -8,12 +8,8 @@
 
 const THREADS_PER_WORKGROUP = 256u;
 
-struct Vertex {
-    pos : vec3<f32>,
-    opacity : f32,
-    cov1 : vec3<f32>,
-    cov2 : vec3<f32>,
-    color : vec3<f32>,
+struct VertexZ {
+    posZ : f32,
 };
 
 struct TileParams {
@@ -23,7 +19,7 @@ struct TileParams {
     maxPerTile : u32,
 };
 
-@group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
+@group(0) @binding(0) var<storage, read> verticesZ : array<VertexZ>;
 @group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(3) var<storage, read> params : TileParams;
@@ -32,8 +28,8 @@ fn compare_and_swap(leftIdx: u32, rightIdx: u32) {
     let leftVertexIdx  = tileIndices[leftIdx];
     let rightVertexIdx = tileIndices[rightIdx];
 
-    let leftZ  = select(1.0, vertices[leftVertexIdx].pos.z, leftVertexIdx != 0xFFFFFFFF);
-    let rightZ = select(1.0, vertices[rightVertexIdx].pos.z, rightVertexIdx != 0xFFFFFFFF);
+    let leftZ  = select(1.0, verticesZ[leftVertexIdx].posZ, leftVertexIdx != 0xFFFFFFFF);
+    let rightZ = select(1.0, verticesZ[rightVertexIdx].posZ, rightVertexIdx != 0xFFFFFFFF);
 
     if (leftZ > rightZ) {
         tileIndices[leftIdx]  = rightVertexIdx;

@@ -87,8 +87,7 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         let dist2 = dx * dx * invCxx + 2.0 * dx * dy * invCxy + dy * dy * invCyy;
 
         if (dist2 < 9.0) { // 3 sigma
-            let weight = exp(-dist2 * 0.5);
-            let alpha = clamp(v.opacity * weight, 0.0, 1.0);
+            let alpha = clamp(v.opacity, 0.0, 1.0);
 
             accumColor += (1.0 - accumAlpha) * v.color * alpha;
             accumAlpha += (1.0 - accumAlpha) * alpha;
@@ -99,9 +98,6 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
             }
         }
     }
-
-    // let debug = f32(count) / f32(params.maxPerTile);
-    // return vec4<f32>(debug, debug, debug, 1.0);
 
     return vec4<f32>(accumColor, 1.0);
 }

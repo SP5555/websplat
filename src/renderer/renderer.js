@@ -8,31 +8,37 @@ const BUFFER_MIN_SIZE = 80; // bytes
 
 export default class Renderer {
     constructor(input) {
+        // max buffer size limit = 2^27 bytes
+        // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
+        this.GRID_SIZE = { x: 64, y: 32 };
+        this.MAX_VERTICES_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
+
+        this.transformShaderPath = './shaders/transform/transform.wgsl';
+        this.tileShaderPath = './shaders/tile/tile.wgsl';
+        this.sortShaderPath = './shaders/sort/sort-bitonic.wgsl';
+        this.renderShaderPath = './shaders/render/render.wgsl';
+
+        /* ===== Private Zone ===== */
         this.canvas = document.getElementById('canvas00');
         this.device = null;
         this.context = null;
-
-        this.vertexCount = 0;
-        this.floatsPerVertex = 0;
-
+        
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
-
+        
         // 4 stage pipeline
         this.transformPipeline = null;
         this.tilePipeline = null;
         this.sortPipeline = null;
         this.renderPipeline = null;
-
+        
         this.isPipelineInitialized = false;
-
+        
         // empty buffers
         this.tileIndicesArray = null;
         this.tileCountersArray = null;
 
-        // max buffer size limit = 2^27 bytes
-        // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
-        this.GRID_SIZE = { x: 64, y: 32 };
-        this.MAX_VERTICES_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
+        this.vertexCount = 0;
+        this.floatsPerVertex = 0;
 
         this.init();
     }
@@ -85,16 +91,16 @@ export default class Renderer {
     }
 
     async initShaders() {
-        this.transformShader = new WGSLShader(this.device, './shaders/transform.wgsl');
+        this.transformShader = new WGSLShader(this.device, this.transformShaderPath);
         await this.transformShader.load();
         
-        this.tileShader = new WGSLShader(this.device, './shaders/tile.wgsl');
+        this.tileShader = new WGSLShader(this.device, this.tileShaderPath);
         await this.tileShader.load();
 
-        this.sortShader = new WGSLShader(this.device, './shaders/sort-bitonic.wgsl');
+        this.sortShader = new WGSLShader(this.device, this.sortShaderPath);
         await this.sortShader.load();
 
-        this.renderShader = new WGSLShader(this.device, './shaders/render.wgsl');
+        this.renderShader = new WGSLShader(this.device, this.renderShaderPath);
         await this.renderShader.load();
     }
 
@@ -113,6 +119,14 @@ export default class Renderer {
 
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
+            size: BUFFER_MIN_SIZE,
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        // this is used for depth sorting during the sort pass
+        // for faster memory access
+        this.transformOutputPosZBuffer = this.device.createBuffer({
+            label: "Transform Output PosZ Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
@@ -168,7 +182,8 @@ export default class Renderer {
             entries: [
                 { binding: 0, resource: { buffer: this.cameraBuffer } },
                 { binding: 1, resource: { buffer: this.transformInputBuffer } },
-                { binding: 2, resource: { buffer: this.transformOutputBuffer } }
+                { binding: 2, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 3, resource: { buffer: this.transformOutputPosZBuffer } }
             ]
         });
     }
@@ -207,7 +222,7 @@ export default class Renderer {
         this.sortBindGroup = this.device.createBindGroup({
             layout: this.sortPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.transformOutputPosZBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } },
                 { binding: 3, resource: { buffer: this.tileParamsBuffer } }
@@ -314,6 +329,13 @@ export default class Renderer {
             usage: GPUBufferUsage.STORAGE
         });
 
+        if (this.transformOutputPosZBuffer) this.transformOutputPosZBuffer.destroy();
+        this.transformOutputPosZBuffer = this.device.createBuffer({
+            label: "Transform Output PosZ Buffer",
+            size: this.vertexCount * 16, // 1x f32 Z and 3x f32 padding per vertex
+            usage: GPUBufferUsage.STORAGE
+        });
+
         if (this.tileIndicesBuffer) this.tileIndicesBuffer.destroy();
         this.tileIndicesBuffer = this.device.createBuffer({
             label: "Tile Indices Buffer",
@@ -326,7 +348,8 @@ export default class Renderer {
             entries: [
                 { binding: 0, resource: { buffer: this.cameraBuffer } },
                 { binding: 1, resource: { buffer: this.transformInputBuffer } },
-                { binding: 2, resource: { buffer: this.transformOutputBuffer } }
+                { binding: 2, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 3, resource: { buffer: this.transformOutputPosZBuffer } }
             ]
         });
 
@@ -343,7 +366,7 @@ export default class Renderer {
         this.sortBindGroup = this.device.createBindGroup({
             layout: this.sortPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.transformOutputPosZBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } },
                 { binding: 3, resource: { buffer: this.tileParamsBuffer } }

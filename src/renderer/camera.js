@@ -18,7 +18,7 @@ export default class Camera {
 
         this.updateViewSpaceVectors();
 
-        this.rotateSpeed = 0.2;
+        this.rotateSpeed = 0.1;
         this.panSpeed = 0.1;
         this.zoomSpeed = 0.1;
 
