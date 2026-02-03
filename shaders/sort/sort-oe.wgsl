@@ -1,3 +1,10 @@
+/* ===== Odd-Even Sort ===== */
+/*
+    Complexity: O(n), simple parallel sorting algorithm.
+    Sentinel indices (0xFFFFFFFF) are used for unused slots.
+    Designed for one workgroup per tile.
+*/
+
 const THREADS_PER_WORKGROUP = 256u;
 
 struct GlobalParams {

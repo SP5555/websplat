@@ -25,8 +25,8 @@ struct CanvasParams {
 @group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
 @group(0) @binding(1) var<storage, read> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
-@group(0) @binding(3) var<uniform> params : GlobalParams;
-@group(0) @binding(4) var<uniform> canvasParams : CanvasParams;
+@group(0) @binding(3) var<uniform> gParams : GlobalParams;
+@group(0) @binding(4) var<uniform> cParams : CanvasParams;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
@@ -43,28 +43,23 @@ fn vs_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
 
 @fragment
 fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
-    // Normalize to [0,1] screen coordinates
-    let uv = fragCoord.xy / vec2<f32>(f32(canvasParams.width), f32(canvasParams.height));
+    let uv = fragCoord.xy / vec2<f32>(f32(cParams.width), f32(cParams.height));
+    let tileX = u32(clamp(floor(uv.x * f32(gParams.gridX)), 0.0, f32(gParams.gridX - 1)));
+    let tileY = u32(clamp(floor(uv.y * f32(gParams.gridY)), 0.0, f32(gParams.gridY - 1)));
+    let tileID = u32(tileY * gParams.gridX + tileX);
 
-    // Compute which tile this fragment belongs to
-    let tileX = u32(clamp(floor(uv.x * f32(params.gridX)), 0.0, f32(params.gridX - 1)));
-    let tileY = u32(clamp(floor(uv.y * f32(params.gridY)), 0.0, f32(params.gridY - 1)));
-    let tileID = u32(tileY * params.gridX + tileX);
+    let aspect = f32(cParams.width) / f32(cParams.height);
 
-    let aspect = f32(canvasParams.width) / f32(canvasParams.height);
-
-    let count = min(tileCounters[tileID], params.maxPerTile);
+    let count = min(tileCounters[tileID], gParams.maxPerTile);
 
     var accumColor = vec3<f32>(0.0);
     var accumAlpha = 0.0;
 
-    for (var i = 0u; i < count; i = i + 1u) {
-        let v = vertices[tileIndices[tileID * params.maxPerTile + i]];
+    // uv is in [0,1], fragNDC is in [-1,1]
+    let fragNDC = uv * 2.0 - vec2<f32>(1.0);
 
-        // Compare fragment in NCD with vertex position in NDC
-        // pos is in normalized clip space [-1,1]
-        // uv is in [0,1]
-        let fragNDC = uv * 2.0 - vec2<f32>(1.0);
+    for (var i = 0u; i < count; i = i + 1u) {
+        let v = vertices[tileIndices[tileID * gParams.maxPerTile + i]];
 
         let dx = fragNDC.x - v.pos.x;
         let dy = fragNDC.y - v.pos.y;

@@ -1,5 +1,11 @@
-// this one is a faster variant of sort-oe.wgsl
-// but can only handle up to 2048 vertices per tile
+/* ===== Faster variant of Odd-Even Sort ===== */
+/*
+    Complexity: O(n), simple parallel sorting algorithm.
+    Sentinel indices (0xFFFFFFFF) are used for unused slots.
+    Designed for one workgroup per tile.
+    Uses shared memory to reduce global memory accesses.
+    however, can only handle up to MAX_VERTICES_PER_TILE vertices per tile.
+*/
 
 const THREADS_PER_WORKGROUP = 128u;
 const MAX_VERTICES_PER_TILE = 2048u;
