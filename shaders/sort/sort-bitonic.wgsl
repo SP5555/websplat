@@ -8,7 +8,7 @@
 
 const THREADS_PER_WORKGROUP = 256u;
 
-struct TileParams {
+struct GlobalParams {
     vertexCount : u32,
     gridX : u32,
     gridY : u32,
@@ -18,7 +18,7 @@ struct TileParams {
 @group(0) @binding(0) var<storage, read> verticesZ : array<f32>;
 @group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
-@group(0) @binding(3) var<storage, read> params : TileParams;
+@group(0) @binding(3) var<uniform> params : GlobalParams;
 
 fn next_pow2(v: u32) -> u32 {
     var x = v - 1u;
@@ -33,6 +33,10 @@ fn next_pow2(v: u32) -> u32 {
 fn compare_and_swap(leftIdx: u32, rightIdx: u32) {
     let leftVertexIdx  = tileIndices[leftIdx];
     let rightVertexIdx = tileIndices[rightIdx];
+
+    if (leftVertexIdx == 0xFFFFFFFFu && rightVertexIdx == 0xFFFFFFFFu) {
+        return; // both sentinels
+    }
 
     let leftZ  = select(1.0, verticesZ[leftVertexIdx], leftVertexIdx != 0xFFFFFFFF);
     let rightZ = select(1.0, verticesZ[rightVertexIdx], rightVertexIdx != 0xFFFFFFFF);

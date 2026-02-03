@@ -150,7 +150,7 @@ export default class Renderer {
         this.tileParamsBuffer = this.device.createBuffer({
             label: "Tile Params Buffer",
             size: 4 * 4, // 4x uint32
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
         const tileParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_TILE]);
         this.device.queue.writeBuffer(this.tileParamsBuffer, 0, tileParams.buffer);

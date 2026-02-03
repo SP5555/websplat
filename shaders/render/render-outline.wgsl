@@ -10,7 +10,7 @@ struct Vertex {
     color : vec3<f32>,
 };
 
-struct TileParams {
+struct GlobalParams {
     vertexCount : u32,
     gridX : u32,
     gridY : u32,
@@ -25,7 +25,7 @@ struct CanvasParams {
 @group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
 @group(0) @binding(1) var<storage, read> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
-@group(0) @binding(3) var<storage, read> params : TileParams;
+@group(0) @binding(3) var<uniform> params : GlobalParams;
 @group(0) @binding(4) var<uniform> canvasParams : CanvasParams;
 
 @vertex

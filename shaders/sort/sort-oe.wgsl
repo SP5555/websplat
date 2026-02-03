@@ -1,6 +1,6 @@
 const THREADS_PER_WORKGROUP = 256u;
 
-struct TileParams {
+struct GlobalParams {
     vertexCount : u32,
     gridX : u32,
     gridY : u32,
@@ -10,7 +10,7 @@ struct TileParams {
 @group(0) @binding(0) var<storage, read> verticesZ : array<f32>;
 @group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
-@group(0) @binding(3) var<storage, read> params : TileParams;
+@group(0) @binding(3) var<uniform> params : GlobalParams;
 
 @compute @workgroup_size(THREADS_PER_WORKGROUP)
 fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
