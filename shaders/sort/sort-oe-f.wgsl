@@ -17,10 +17,11 @@ struct GlobalParams {
     maxPerTile : u32,
 };
 
-@group(0) @binding(0) var<storage, read> verticesZ : array<f32>;
-@group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
-@group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
-@group(0) @binding(3) var<uniform> params : GlobalParams;
+@group(0) @binding(0) var<uniform> uGParams : GlobalParams;
+
+@group(1) @binding(0) var<storage, read> inVerticesZ : array<f32>;
+@group(1) @binding(1) var<storage, read_write> inOutTileIndices : array<u32>;
+@group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
 
 var<workgroup> localIndices : array<u32, MAX_VERTICES_PER_TILE>;
 var<workgroup> localVertZs : array<f32, MAX_VERTICES_PER_TILE>;
@@ -32,17 +33,17 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     let threadID = thread_local_id.x;
     let tileID = workgroup_id.x;
 
-    let idxCountInTile = tileCounters[tileID];
+    let idxCountInTile = min(inTileCounters[tileID], uGParams.maxPerTile);
     // empty tile
     if (idxCountInTile == 0u) { return; }
 
-    let baseIdx = tileID * params.maxPerTile;
+    let baseIdx = tileID * uGParams.maxPerTile;
 
     // load into shared memory from global memory
     for (var i = threadID; i < idxCountInTile; i = i + THREADS_PER_WORKGROUP) {
-        let vertexIdx = tileIndices[baseIdx + i];
+        let vertexIdx = inOutTileIndices[baseIdx + i];
         localIndices[i] = vertexIdx;
-        localVertZs[i] = verticesZ[vertexIdx];
+        localVertZs[i] = inVerticesZ[vertexIdx];
     }
 
     // odd-even sort
@@ -91,6 +92,6 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
 
     // write back to global memory
     for (var i = threadID; i < idxCountInTile; i = i + THREADS_PER_WORKGROUP) {
-        tileIndices[baseIdx + i] = localIndices[i];
+        inOutTileIndices[baseIdx + i] = localIndices[i];
     }
 }

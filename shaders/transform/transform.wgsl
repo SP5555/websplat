@@ -28,19 +28,20 @@ struct Vertex {
 // cov1 = (cxx', cxy', cyy')
 // cov2 = unused
 
-@group(0) @binding(0) var<uniform> camera : Camera;
-@group(0) @binding(1) var<storage, read> vertices : array<Vertex>;
-@group(0) @binding(2) var<storage, read_write> outVertices : array<Vertex>;
-@group(0) @binding(3) var<storage, read_write> outVerticesZ : array<f32>;
+@group(0) @binding(0) var<uniform> uCamera : Camera;
+
+@group(1) @binding(0) var<storage, read> inVertices : array<Vertex>;
+@group(1) @binding(1) var<storage, read_write> outVertices : array<Vertex>;
+@group(1) @binding(2) var<storage, read_write> outVerticesZ : array<f32>;
 
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
-    if (i >= arrayLength(&vertices)) { return; }
+    if (i >= arrayLength(&inVertices)) { return; }
 
-    let v = vertices[i];
+    let v = inVertices[i];
 
-    let pvM4x4 = camera.pvMatrix;
+    let pvM4x4 = uCamera.pvMatrix;
 
     /* ===== position transform ===== */
     let c = pvM4x4 * vec4<f32>(v.pos.xyz, 1.0);
@@ -134,23 +135,23 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
             [ (V10*c_w-V30*c_y)/c_w^2  (V11*c_w-V31*c_y)/c_w^2  (V12*c_w-V32*c_y)/c_w^2 ]
     */
     // let W = mat3x3<f32>(
-    //     camera.vMatrix[0].xyz,
-    //     camera.vMatrix[1].xyz,
-    //     camera.vMatrix[2].xyz
+    //     uCamera.vMatrix[0].xyz,
+    //     uCamera.vMatrix[1].xyz,
+    //     uCamera.vMatrix[2].xyz
     // );
     // let W_cov_WT = W * cov * transpose(W);
     // let J = mat3x2<f32>(
     //     vec2<f32>(
-    //         (camera.pMatrix[0][0] * c.w - camera.pMatrix[0][3] * c.x) * inv_c_w2,
-    //         (camera.pMatrix[0][1] * c.w - camera.pMatrix[0][3] * c.y) * inv_c_w2
+    //         (uCamera.pMatrix[0][0] * c.w - uCamera.pMatrix[0][3] * c.x) * inv_c_w2,
+    //         (uCamera.pMatrix[0][1] * c.w - uCamera.pMatrix[0][3] * c.y) * inv_c_w2
     //     ),
     //     vec2<f32>(
-    //         (camera.pMatrix[1][0] * c.w - camera.pMatrix[1][3] * c.x) * inv_c_w2,
-    //         (camera.pMatrix[1][1] * c.w - camera.pMatrix[1][3] * c.y) * inv_c_w2,
+    //         (uCamera.pMatrix[1][0] * c.w - uCamera.pMatrix[1][3] * c.x) * inv_c_w2,
+    //         (uCamera.pMatrix[1][1] * c.w - uCamera.pMatrix[1][3] * c.y) * inv_c_w2,
     //     ),
     //     vec2<f32>(
-    //         (camera.pMatrix[2][0] * c.w - camera.pMatrix[2][3] * c.x) * inv_c_w2,
-    //         (camera.pMatrix[2][1] * c.w - camera.pMatrix[2][3] * c.y) * inv_c_w2,
+    //         (uCamera.pMatrix[2][0] * c.w - uCamera.pMatrix[2][3] * c.x) * inv_c_w2,
+    //         (uCamera.pMatrix[2][1] * c.w - uCamera.pMatrix[2][3] * c.y) * inv_c_w2,
     //     )
     // );
     // let J_W_cov_WT_JT = J * W_cov_WT * transpose(J);

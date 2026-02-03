@@ -13,30 +13,31 @@ struct GlobalParams {
     maxPerTile : u32,
 };
 
-@group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
-@group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
-@group(0) @binding(2) var<storage, read_write> tileCounters : array<atomic<u32>>;
-@group(0) @binding(3) var<uniform> params : GlobalParams;
+@group(0) @binding(0) var<uniform> uGParams : GlobalParams;
+
+@group(1) @binding(0) var<storage, read> inVertices : array<Vertex>;
+@group(1) @binding(1) var<storage, read_write> outTileIndices : array<u32>;
+@group(1) @binding(2) var<storage, read_write> outTileCounters : array<atomic<u32>>;
 
 fn toIndex(x : i32, y : i32) -> u32 {
-    return u32(y * i32(params.gridX) + x);
+    return u32(y * i32(uGParams.gridX) + x);
 }
 
 fn tryPush(tileIdx: u32, vertexIdx: u32) {
     // note: atomicAdd will overshoot the max
     // be sure to clamp the counter afterwards
-    let idx = atomicAdd(&tileCounters[tileIdx], 1u);
-    if (idx < params.maxPerTile) {
-        tileIndices[tileIdx * params.maxPerTile + idx] = vertexIdx;
+    let idx = atomicAdd(&outTileCounters[tileIdx], 1u);
+    if (idx < uGParams.maxPerTile) {
+        outTileIndices[tileIdx * uGParams.maxPerTile + idx] = vertexIdx;
     }
 }
 
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
-    if (i >= params.vertexCount) { return; }
+    if (i >= uGParams.vertexCount) { return; }
 
-    let v = vertices[i];
+    let v = inVertices[i];
 
     // point outside clip space
     if (abs(v.pos.z) > 1.0 || abs(v.pos.x) > 1.0 || abs(v.pos.y) > 1.0) {
@@ -44,8 +45,8 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 
     // compute tile coordinates as floats
-    let xF = ((v.pos.x + 1.0) * 0.5) * f32(params.gridX);
-    let yF = ((v.pos.y + 1.0) * 0.5) * f32(params.gridY);
+    let xF = ((v.pos.x + 1.0) * 0.5) * f32(uGParams.gridX);
+    let yF = ((v.pos.y + 1.0) * 0.5) * f32(uGParams.gridY);
 
     let cxx = v.cov1.x;
     let cxy = v.cov1.y;
@@ -68,10 +69,10 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let minY = v.pos.y - maxRadius;
     let maxY = v.pos.y + maxRadius;
 
-    let x0 = clamp(i32(floor((minX + 1.0)*0.5 * f32(params.gridX))), 0, i32(params.gridX)-1);
-    let x1 = clamp(i32(floor((maxX + 1.0)*0.5 * f32(params.gridX))), 0, i32(params.gridX)-1);
-    let y0 = clamp(i32(floor((minY + 1.0)*0.5 * f32(params.gridY))), 0, i32(params.gridY)-1);
-    let y1 = clamp(i32(floor((maxY + 1.0)*0.5 * f32(params.gridY))), 0, i32(params.gridY)-1);
+    let x0 = clamp(i32(floor((minX + 1.0)*0.5 * f32(uGParams.gridX))), 0, i32(uGParams.gridX)-1);
+    let x1 = clamp(i32(floor((maxX + 1.0)*0.5 * f32(uGParams.gridX))), 0, i32(uGParams.gridX)-1);
+    let y0 = clamp(i32(floor((minY + 1.0)*0.5 * f32(uGParams.gridY))), 0, i32(uGParams.gridY)-1);
+    let y1 = clamp(i32(floor((maxY + 1.0)*0.5 * f32(uGParams.gridY))), 0, i32(uGParams.gridY)-1);
 
     for (var ty = y0; ty <= y1; ty = ty + 1) {
         for (var tx = x0; tx <= x1; tx = tx + 1) {
