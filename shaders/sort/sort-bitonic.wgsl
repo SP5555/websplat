@@ -8,10 +8,6 @@
 
 const THREADS_PER_WORKGROUP = 256u;
 
-struct VertexZ {
-    posZ : f32,
-};
-
 struct TileParams {
     vertexCount : u32,
     gridX : u32,
@@ -19,17 +15,27 @@ struct TileParams {
     maxPerTile : u32,
 };
 
-@group(0) @binding(0) var<storage, read> verticesZ : array<VertexZ>;
+@group(0) @binding(0) var<storage, read> verticesZ : array<f32>;
 @group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(3) var<storage, read> params : TileParams;
+
+fn next_pow2(v: u32) -> u32 {
+    var x = v - 1u;
+    x = x | (x >> 1u);
+    x = x | (x >> 2u);
+    x = x | (x >> 4u);
+    x = x | (x >> 8u);
+    x = x | (x >> 16u);
+    return x + 1u;
+}
 
 fn compare_and_swap(leftIdx: u32, rightIdx: u32) {
     let leftVertexIdx  = tileIndices[leftIdx];
     let rightVertexIdx = tileIndices[rightIdx];
 
-    let leftZ  = select(1.0, verticesZ[leftVertexIdx].posZ, leftVertexIdx != 0xFFFFFFFF);
-    let rightZ = select(1.0, verticesZ[rightVertexIdx].posZ, rightVertexIdx != 0xFFFFFFFF);
+    let leftZ  = select(1.0, verticesZ[leftVertexIdx], leftVertexIdx != 0xFFFFFFFF);
+    let rightZ = select(1.0, verticesZ[rightVertexIdx], rightVertexIdx != 0xFFFFFFFF);
 
     if (leftZ > rightZ) {
         tileIndices[leftIdx]  = rightVertexIdx;
@@ -45,16 +51,19 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     let tileID = workgroup_id.x;
     let MAX_PER_TILE = params.maxPerTile;
 
-    if (min(tileCounters[tileID], MAX_PER_TILE) == 0u) { return; }
+    let countInTile = min(tileCounters[tileID], MAX_PER_TILE);
+    if (countInTile == 0u) { return; }
+
+    let countPow2 = next_pow2(countInTile);
 
     // bitonic must operate on the whole array of size MAX_PER_TILE
     // thus, unused index slots are filled with max Uint32 value
-    let compsPerThread = (MAX_PER_TILE + THREADS_PER_WORKGROUP - 1u) / THREADS_PER_WORKGROUP;
+    let compsPerThread = (countPow2 + THREADS_PER_WORKGROUP - 1u) / THREADS_PER_WORKGROUP;
     let baseIdx = tileID * MAX_PER_TILE;
 
     // bitonic sort in global memory
     var k = 2u;
-    while (k <= MAX_PER_TILE) {
+    while (k <= countPow2) {
 
         /* ===== FLIP BLOCK ===== */
         // each thread handles multiple comparisons if needed

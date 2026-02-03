@@ -4,10 +4,6 @@
 const THREADS_PER_WORKGROUP = 128u;
 const MAX_VERTICES_PER_TILE = 2048u;
 
-struct VertexZ {
-    posZ : f32,
-};
-
 struct TileParams {
     vertexCount : u32,
     gridX : u32,
@@ -15,7 +11,7 @@ struct TileParams {
     maxPerTile : u32,
 };
 
-@group(0) @binding(0) var<storage, read> verticesZ : array<VertexZ>;
+@group(0) @binding(0) var<storage, read> verticesZ : array<f32>;
 @group(0) @binding(1) var<storage, read_write> tileIndices : array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounters : array<u32>;
 @group(0) @binding(3) var<storage, read> params : TileParams;
@@ -40,7 +36,7 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     for (var i = threadID; i < idxCountInTile; i = i + THREADS_PER_WORKGROUP) {
         let vertexIdx = tileIndices[baseIdx + i];
         localIndices[i] = vertexIdx;
-        localVertZs[i] = verticesZ[vertexIdx].posZ;
+        localVertZs[i] = verticesZ[vertexIdx];
     }
 
     // odd-even sort

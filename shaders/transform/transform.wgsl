@@ -12,10 +12,6 @@ struct Vertex {
     color : vec3<f32>,
 };
 
-struct VertexZ {
-    posZ : f32,
-};
-
 // in vertices
 // cov1 = (cxx, cxy, cxz)
 // cov2 = (cyy, cyz, czz)
@@ -35,7 +31,7 @@ struct VertexZ {
 @group(0) @binding(0) var<uniform> camera : Camera;
 @group(0) @binding(1) var<storage, read> vertices : array<Vertex>;
 @group(0) @binding(2) var<storage, read_write> outVertices : array<Vertex>;
-@group(0) @binding(3) var<storage, read_write> outVerticesZ : array<VertexZ>;
+@group(0) @binding(3) var<storage, read_write> outVerticesZ : array<f32>;
 
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
@@ -171,7 +167,5 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         v.color
     );
 
-    outVerticesZ[i] = VertexZ(
-        transformedPos.z
-    );
+    outVerticesZ[i] = transformedPos.z;
 }

@@ -333,7 +333,7 @@ export default class Renderer {
         if (this.transformOutputPosZBuffer) this.transformOutputPosZBuffer.destroy();
         this.transformOutputPosZBuffer = this.device.createBuffer({
             label: "Transform Output PosZ Buffer",
-            size: this.vertexCount * 16, // 1x f32 Z and 3x f32 padding per vertex
+            size: this.vertexCount * 4, // 1x f32 per vertex
             usage: GPUBufferUsage.STORAGE
         });
 
