@@ -1,18 +1,18 @@
 'use strict';
 
-import Renderer from "../renderer/renderer.js";
+import ComputeSplatRenderer from "../renderer/compute-splat-renderer.js";
 import GUIManager from "../gui/gui-manager.js";
 import HUDManager from "../hud/hud-manager.js";
 import PLYLoader from "../loaders/ply-loader.js";
 import { eventBus } from "../utils/event-emitters.js";
 import { EVENTS } from "../utils/event.js";
 import Input from "../input/input.js";
-import { GaussianPrecompute } from "../preprocessing/gaussian-precompute.js";
+import { GaussianPrecompute } from "../gaussian/gaussian-precompute.js";
 
 export default class App {
     constructor() {
         this.input = new Input();
-        this.renderer = new Renderer(this.input);
+        this.renderer = new ComputeSplatRenderer(this.input);
         this.guiManager = new GUIManager();
         this.hud = new HUDManager();
         this.plyLoader = new PLYLoader();
