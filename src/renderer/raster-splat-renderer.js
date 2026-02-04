@@ -213,7 +213,7 @@ export default class RasterSplatRenderer {
             pass.setBindGroup(0, this.renderBindGroup);
             pass.setVertexBuffer(0, this.vertexBuffer);
             if (this.vertexCount) {
-                pass.draw(this.vertexCount, 1, 0, 0);
+                pass.draw(this.vertexCount, 3, 0, 0);
             }
             pass.end();
         }
