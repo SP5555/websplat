@@ -39,7 +39,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
     if (i >= arrayLength(&inVertices)) { return; }
 
-    let v = inVertices[i];
+    var v = inVertices[i];
 
     let pvM4x4 = uCamera.pvMatrix;
 

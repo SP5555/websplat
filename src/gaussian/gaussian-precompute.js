@@ -51,11 +51,12 @@ export function GaussianPrecompute(raw) {
         covariances[base + 4] = cov[5]; // cyz
         covariances[base + 5] = cov[8]; // czz
 
-        // flip z axis
+        // flip y and z axes
+        positions[i*3 + 1] *= -1;
         positions[i*3 + 2] *= -1;
 
-        covariances[base + 2] *= -1; // cxy
-        covariances[base + 4] *= -1; // cyz
+        covariances[base + 1] *= -1; // cxy
+        covariances[base + 2] *= -1; // cxz
     }
 
     return {

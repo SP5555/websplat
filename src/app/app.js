@@ -1,6 +1,7 @@
 'use strict';
 
 import ComputeSplatRenderer from "../renderer/compute-splat-renderer.js";
+import RasterSplatRenderer from "../renderer/raster-splat-renderer.js";
 import GUIManager from "../gui/gui-manager.js";
 import HUDManager from "../hud/hud-manager.js";
 import PLYLoader from "../loaders/ply-loader.js";

@@ -20,6 +20,7 @@ export default class ComputeSplatRenderer {
         this.tileShaderPath       = './src/gpu/shaders/tile/tile.wgsl';
         this.sortShaderPath       = './src/gpu/shaders/sort/sort-bitonic.wgsl';
         this.renderShaderPath     = './src/gpu/shaders/render/render.wgsl';
+
         /* ===== Private Zone ===== */
         this.canvas = document.getElementById('canvas00');
         this.device = null;
@@ -75,6 +76,15 @@ export default class ComputeSplatRenderer {
 
         console.log("Device limits: ", this.device.limits);
         return true;
+    }
+
+    configureContext() {
+        if (!this.device || !this.context) return;
+        this.context.configure({
+            device: this.device,
+            format: navigator.gpu.getPreferredCanvasFormat(),
+            alphaMode: 'opaque'
+        });
     }
 
     async initGPUPipeline() {
@@ -313,15 +323,6 @@ export default class ComputeSplatRenderer {
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } }
             ]
-        });
-    }
-
-    configureContext() {
-        if (!this.device || !this.context) return;
-        this.context.configure({
-            device: this.device,
-            format: navigator.gpu.getPreferredCanvasFormat(),
-            alphaMode: 'opaque'
         });
     }
 

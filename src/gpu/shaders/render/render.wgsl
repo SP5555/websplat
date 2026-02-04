@@ -45,7 +45,11 @@ fn vs_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
 @fragment
 fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     // Normalize to [0,1] screen coordinates
-    let uv = fragCoord.xy / vec2<f32>(f32(uCParams.width), f32(uCParams.height));
+    // fragCoord.y grows upwards, so we need to flip it
+    let uv = vec2<f32>(
+        fragCoord.x / f32(uCParams.width),
+        1.0 - fragCoord.y / f32(uCParams.height)
+    );
 
     // Compute which tile this fragment belongs to
     let tileX = u32(clamp(floor(uv.x * f32(uGParams.gridX)), 0.0, f32(uGParams.gridX - 1)));
