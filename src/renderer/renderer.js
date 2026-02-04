@@ -5,19 +5,19 @@ import { MeshBufferBuilder } from "./mesh-buffer-builder.js";
 import WGSLShader from "./wgsl-shader/wgsl-shader.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
-const MAX_UINT32 = 0xFFFFFFFF;
 
 export default class Renderer {
     constructor(input) {
         // max buffer size limit = 2^27 bytes
         // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
-        this.GRID_SIZE = { x: 32, y: 32 };
+        this.GRID_SIZE = { x: 64, y: 64 };
         this.MAX_VERTICES_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
-        this.transformShaderPath = './shaders/transform/transform.wgsl';
-        this.tileShaderPath      = './shaders/tile/tile.wgsl';
-        this.sortShaderPath      = './shaders/sort/sort-bitonic.wgsl';
-        this.renderShaderPath    = './shaders/render/render.wgsl';
+        this.clearTilesShaderPath = './shaders/clear-tiles/clear-tiles.wgsl';
+        this.transformShaderPath  = './shaders/transform/transform.wgsl';
+        this.tileShaderPath       = './shaders/tile/tile.wgsl';
+        this.sortShaderPath       = './shaders/sort/sort-bitonic.wgsl';
+        this.renderShaderPath     = './shaders/render/render.wgsl';
 
         /* ===== Private Zone ===== */
         this.canvas = document.getElementById('canvas00');
@@ -25,21 +25,19 @@ export default class Renderer {
         this.context = null;
         
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
+        this.vertexCount = 0;
+        this.floatsPerVertex = 0;
         
-        // 4 stage pipeline
+        /* ===== Pipelines ===== */
+        // 0th "reset" pipeline
+        this.clearTilesPipeline = null;
+        // main 4 stages
         this.transformPipeline = null;
         this.tilePipeline = null;
         this.sortPipeline = null;
         this.renderPipeline = null;
         
         this.isPipelineInitialized = false;
-        
-        // empty buffers
-        this.tileIndicesArray = null;
-        this.tileCountersArray = null;
-
-        this.vertexCount = 0;
-        this.floatsPerVertex = 0;
 
         this.init();
     }
@@ -83,6 +81,7 @@ export default class Renderer {
 
         this.createDataBuffers();
 
+        this.createClearTilesPipeline();
         this.createTransformPipeline();
         this.createTilePipeline();
         this.createSortPipeline();
@@ -92,6 +91,9 @@ export default class Renderer {
     }
 
     async initShaders() {
+        this.clearTileShader = new WGSLShader(this.device, this.clearTilesShaderPath);
+        await this.clearTileShader.load();
+
         this.transformShader = new WGSLShader(this.device, this.transformShaderPath);
         await this.transformShader.load();
         
@@ -170,9 +172,32 @@ export default class Renderer {
         });
         const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
         this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
+    }
 
-        this.tileIndicesArray = new Uint32Array(this.tileIndicesBuffer.size / 4).fill(MAX_UINT32);
-        this.tileCountersArray = new Uint32Array(this.tileCountersBuffer.size / 4).fill(0);
+    createClearTilesPipeline() {
+        this.clearTilesPipeline = this.device.createComputePipeline({
+            label: "Clear Tiles Pipeline",
+            layout: 'auto',
+            compute: {
+                module: this.clearTileShader.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.clearTilesBindGroup0 = this.device.createBindGroup({
+            layout: this.clearTilesPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.globalParamsBuffer } }
+            ]
+        });
+
+        this.clearTilesBindGroup1 = this.device.createBindGroup({
+            layout: this.clearTilesPipeline.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.tileIndicesBuffer } },
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } }
+            ]
+        });
     }
 
     createTransformPipeline() {
@@ -339,9 +364,6 @@ export default class Renderer {
             this.MAX_VERTICES_PER_TILE
         ]);
 
-        this.tileIndicesArray = new Uint32Array(this.tileIndicesBuffer.size / 4).fill(MAX_UINT32);
-        this.tileCountersArray = new Uint32Array(this.tileCountersBuffer.size / 4).fill(0);
-
         this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
     }
@@ -373,6 +395,14 @@ export default class Renderer {
             label: "Tile Indices Buffer",
             size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        this.clearTilesBindGroup1 = this.device.createBindGroup({
+            layout: this.clearTilesPipeline.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.tileIndicesBuffer } },
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } }
+            ]
         });
 
         this.transformBindGroup1 = this.device.createBindGroup({
@@ -418,18 +448,19 @@ export default class Renderer {
         if (!this.device || !this.context || !this.isPipelineInitialized) return;
 
         this.updateCameraBuffer(dt);
-        this.device.queue.writeBuffer(
-            this.tileIndicesBuffer,
-            0,
-            this.tileIndicesArray.buffer
-        );
-        this.device.queue.writeBuffer(
-            this.tileCountersBuffer,
-            0,
-            this.tileCountersArray.buffer
-        );
 
         const encoder = this.device.createCommandEncoder();
+
+        // Pass 0: Clear Tiles Pass
+        {
+            const pass = encoder.beginComputePass();
+            pass.setPipeline(this.clearTilesPipeline);
+            pass.setBindGroup(0, this.clearTilesBindGroup0);
+            pass.setBindGroup(1, this.clearTilesBindGroup1);
+            const numWorkgroups = this.GRID_SIZE.x * this.GRID_SIZE.y;
+            pass.dispatchWorkgroups(numWorkgroups);
+            pass.end();
+        }
 
         // Pass 1: Transform Compute Pass
         {
