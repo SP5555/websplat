@@ -39,6 +39,8 @@ export default class Camera {
         this.pvMatrix = mat4.create();
 
         this.initializeEventListeners();
+
+        this.updateMatrices();
     }
 
     initializeEventListeners() {
@@ -66,6 +68,8 @@ export default class Camera {
         const viewDir = vec3.normalize(vec3.create(), vec3.negate(vec3.create(), offset));
         const distance = vec3.length(offset);
 
+        let isDirty = false;
+
         if (this.input.mouseDownButtons.left && !this.input.shiftPressed) { // rotate
 
             const dir = vec3.normalize(vec3.create(), offset);
@@ -87,6 +91,8 @@ export default class Camera {
             const newOffset = vec3.create();
             vec3.scale(newOffset, newDir, distance);
             vec3.add(this.position, this.target, newOffset);
+
+            isDirty = true;
         }
 
         if (this.input.mouseDownButtons.left && this.input.shiftPressed) { // pan
@@ -96,6 +102,8 @@ export default class Camera {
 
             vec3.add(this.position, this.position, translation);
             vec3.add(this.target, this.target, translation);
+
+            isDirty = true;
         }
 
         if (scrollDelta !== 0) { // zoom
@@ -113,12 +121,16 @@ export default class Camera {
             if (newDistance > this.maxDistance) {
                 vec3.scaleAndAdd(this.position, this.target, viewDir, -this.maxDistance);
             }
+
+            isDirty = true;
         }
 
+        if (!isDirty) return false;
         this.updateViewSpaceVectors();
         this.updateMatrices();
+        return true;
     }
-    
+
     updateMatrices() {
         mat4.lookAt(this.vMatrix, this.position, this.target, this.up);
         mat4.multiply(this.pvMatrix, this.pMatrix, this.vMatrix);
