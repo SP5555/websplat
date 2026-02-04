@@ -1,6 +1,6 @@
 /* ===== Modified version of the Bitonic Sort ===== */
 /*
-    Each tile must hold 2^n indices.
+    EACH TILE MUST HAVE A SIZE THAT IS A POWER OF 2.
     Complexity: O((log^2)n), massively parallel sorting algorithm.
     Sentinel indices (0xFFFFFFFF) are used for unused slots.
     Designed for one workgroup per tile.

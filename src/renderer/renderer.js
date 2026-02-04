@@ -10,7 +10,9 @@ export default class Renderer {
     constructor(input) {
         // max buffer size limit = 2^27 bytes
         // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
-        this.GRID_SIZE = { x: 64, y: 64 };
+        // keep the grid dimensions the power of 2
+        // otherwise, sorting shader won't work correctly
+        this.GRID_SIZE = { x: 32, y: 32 };
         this.MAX_VERTICES_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
         this.clearTilesShaderPath = './shaders/clear-tiles/clear-tiles.wgsl';
@@ -238,7 +240,8 @@ export default class Renderer {
         this.tileBindGroup0 = this.device.createBindGroup({
             layout: this.tilePipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.globalParamsBuffer } }
+                { binding: 0, resource: { buffer: this.globalParamsBuffer } },
+                { binding: 1, resource: { buffer: this.canvasParamsBuffer } }
             ]
         });
 

@@ -13,7 +13,13 @@ struct GlobalParams {
     maxPerTile : u32,
 };
 
+struct CanvasParams {
+    width : u32,
+    height : u32,
+};
+
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
+@group(0) @binding(1) var<uniform> uCParams : CanvasParams;
 
 @group(1) @binding(0) var<storage, read> inVertices : array<Vertex>;
 @group(1) @binding(1) var<storage, read_write> outTileIndices : array<u32>;
@@ -44,10 +50,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    // compute tile coordinates as floats
-    let xF = ((v.pos.x + 1.0) * 0.5) * f32(uGParams.gridX);
-    let yF = ((v.pos.y + 1.0) * 0.5) * f32(uGParams.gridY);
-
+    // compute 3 sigma "radius" of the ellipse 
     let cxx = v.cov1.x;
     let cxy = v.cov1.y;
     let cyy = v.cov1.z;
@@ -61,8 +64,25 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let lambda1 = 0.5 * (trace + sqrt(temp));
     let lambda2 = 0.5 * (trace - sqrt(temp));
 
-    let max = max(lambda1, lambda2);
-    let maxRadius = 3.0 * sqrt(max); // 3 sigma
+    // 3 sigma min and max radius
+    let minRadius = 3.0 * sqrt(min(lambda1, lambda2));
+    let maxRadius = 3.0 * sqrt(max(lambda1, lambda2));
+
+    // pixel size in NDC space
+    let pixelSizeX = 2.0 / f32(uCParams.width);
+    let pixelSizeY = 2.0 / f32(uCParams.height);
+    let pixelSize = max(pixelSizeX, pixelSizeY);
+
+    // this is too aggressive, commented out for now
+    // discard if the splat is too "thin"
+    // if (2.0 * minRadius < pixelSize) {
+    //     return;
+    // }
+
+    // discard if the entire splat is smaller than a pixel
+    if (maxRadius < pixelSize) {
+        return;
+    }
 
     let minX = v.pos.x - maxRadius;
     let maxX = v.pos.x + maxRadius;
