@@ -138,19 +138,17 @@ export default class Renderer {
         });
 
         // each tile holds MAX_VERTICES_PER_TILE indices (uint32)
-        // resets each frame, requires COPY_DST
         this.tileIndicesBuffer = this.device.createBuffer({
             label: "Tile Indices Buffer",
             size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE
         });
 
         // holds the current number of vertices in each tile (uint32)
-        // resets each frame, requires COPY_DST
         this.tileCountersBuffer = this.device.createBuffer({
             label: "Tile Counters Buffer",
             size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per tile
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE
         });
 
         // vertex count in the scene, grid sizes and max vertices a tile can hold
@@ -394,7 +392,7 @@ export default class Renderer {
         this.tileIndicesBuffer = this.device.createBuffer({
             label: "Tile Indices Buffer",
             size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE
         });
 
         this.clearTilesBindGroup1 = this.device.createBindGroup({
