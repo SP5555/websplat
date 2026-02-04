@@ -13,7 +13,7 @@ import { GaussianPrecompute } from "../gaussian/gaussian-precompute.js";
 export default class App {
     constructor() {
         this.input = new Input();
-        this.renderer = new ComputeSplatRenderer(this.input);
+        this.renderer = new RasterSplatRenderer(this.input);
         this.guiManager = new GUIManager();
         this.hud = new HUDManager();
         this.plyLoader = new PLYLoader();

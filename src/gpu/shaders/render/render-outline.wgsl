@@ -49,7 +49,6 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     let tileY = u32(clamp(floor(uv.y * f32(uGParams.gridY)), 0.0, f32(uGParams.gridY - 1)));
     let tileIndex = u32(tileY * uGParams.gridX + tileX);
 
-    let aspect = f32(uCParams.width) / f32(uCParams.height);
     let count = inTileCounters[tileIndex];
 
     var accumColor = vec3<f32>(0.0);

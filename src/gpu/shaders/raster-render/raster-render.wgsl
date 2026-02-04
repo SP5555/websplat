@@ -1,54 +1,159 @@
 struct Camera {
     vMatrix : mat4x4<f32>,
     pMatrix : mat4x4<f32>,
-    pvMatrix   : mat4x4<f32>,
+    pvMatrix : mat4x4<f32>,
 };
 
-@group(0) @binding(0)
-var<uniform> uCamera : Camera;
-
-struct VSIn {
-    @location(0) pos : vec3<f32>,
+struct CanvasParams {
+    width : u32,
+    height : u32,
 };
+
+struct Splat {
+    pos : vec3<f32>,
+    opacity : f32,
+    cov1 : vec3<f32>,
+    cov2 : vec3<f32>,
+    color : vec3<f32>,
+};
+
+@group(0) @binding(0) var<uniform> uCamera : Camera;
+@group(0) @binding(1) var<uniform> uCParams : CanvasParams;
+
+@group(1) @binding(0) var<storage, read> inSplats : array<Splat>;
 
 struct VSOut {
-    @builtin(position) clipPos : vec4<f32>,
-    @location(0) color : vec4<f32>,
+    @builtin(position) pos : vec4<f32>,
+    @location(0) splatPos : vec3<f32>,
+    @location(1) color : vec4<f32>,
+    @location(2) cov : vec3<f32>, // cxx', cxy', cyy'
 };
 
 @vertex
 fn vs_main(
-    in : VSIn,
-    @builtin(instance_index) instanceIdx : u32
+    @builtin(vertex_index) quadIdx : u32,
+    @builtin(instance_index) splatIdx : u32
 ) -> VSOut {
-    var out : VSOut;
 
-    let offset = vec2<f32>(
-        select(-0.1, 0.1, (instanceIdx & 1u) == 1u),
-        select(-0.05, 0.05, (instanceIdx & 2u) == 2u)
+    let quadOffsetDirs = array<vec2<f32>, 6>(
+        vec2(-1.0, -1.0),
+        vec2( 1.0, -1.0),
+        vec2(-1.0,  1.0),
+
+        vec2(-1.0,  1.0),
+        vec2( 1.0, -1.0),
+        vec2( 1.0,  1.0),
     );
 
-    // position is world-space
-    out.clipPos = uCamera.pvMatrix * vec4<f32>(in.pos, 1.0);
+    let splat = inSplats[splatIdx];
+    let offsetDir = quadOffsetDirs[quadIdx];
 
-    out.clipPos.x += offset.x * out.clipPos.w;
-    out.clipPos.y += offset.y * out.clipPos.w;
+    let pvM4x4 = uCamera.pvMatrix;
+    let aspect = f32(uCParams.width) / f32(uCParams.height);
+    let invAspect = 1.0 / aspect;
 
-    // solid white
-    out.color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-    if (instanceIdx == 1u) {
-        out.color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
-    }
-    if (instanceIdx == 2u) {
-        out.color = vec4<f32>(0.0, 1.0, 0.0, 1.0);
-    }
-    if (instanceIdx == 3u) {
-        out.color = vec4<f32>(0.0, 0.0, 1.0, 1.0);
-    }
-    return out;
+    /* ===== position transform ===== */
+    let c = pvM4x4 * vec4<f32>(splat.pos, 1.0);
+    // perspective divide
+    let ndcPos = vec3<f32>(
+        c.x / c.w,
+        c.y / c.w,
+        c.z / c.w
+    );
+
+    /* ===== covariance transform ===== */
+    let cov = mat3x3<f32>(
+        splat.cov1.x, splat.cov1.y, splat.cov1.z,
+        splat.cov1.y, splat.cov2.x, splat.cov2.y,
+        splat.cov1.z, splat.cov2.y, splat.cov2.z
+    );
+    let w = max(c.w, 1e-6);
+    let inv_c_w2 = 1.0 / (w * w);
+
+    /* ===== J * cov * J^T (feelings) version ===== */
+    // Jacobian
+    // note that pvM4x4 is column-major
+    let JR0 = vec3<f32>(
+        (pvM4x4[0][0] * c.w - pvM4x4[0][3] * c.x) * inv_c_w2,
+        (pvM4x4[1][0] * c.w - pvM4x4[1][3] * c.x) * inv_c_w2,
+        (pvM4x4[2][0] * c.w - pvM4x4[2][3] * c.x) * inv_c_w2
+    );
+    let JR1 = vec3<f32>(
+        (pvM4x4[0][1] * c.w - pvM4x4[0][3] * c.y) * inv_c_w2,
+        (pvM4x4[1][1] * c.w - pvM4x4[1][3] * c.y) * inv_c_w2,
+        (pvM4x4[2][1] * c.w - pvM4x4[2][3] * c.y) * inv_c_w2
+    );
+
+    // transformed covariance = J * cov * J^T
+    let cov_JR0 = cov * JR0;
+    let cov_JR1 = cov * JR1;
+
+    let cxx_p = dot(JR0, cov_JR0);
+    let cxy_p = dot(JR0, cov_JR1);
+    let cyy_p = dot(JR1, cov_JR1);
+
+    let trace = cxx_p + cyy_p;
+    let det = cxx_p * cyy_p - cxy_p * cxy_p;
+    
+    let temp = trace * trace - 4.0 * det;
+    let lambda1 = 0.5 * (trace + sqrt(temp));
+    let lambda2 = 0.5 * (trace - sqrt(temp));
+
+    // 3 sigma max radius in NDC space
+    let maxRadius = 3.0 * sqrt(max(lambda1, lambda2));
+
+    let X = ndcPos.x + maxRadius * offsetDir.x * invAspect;
+    let Y = ndcPos.y + maxRadius * offsetDir.y;
+
+    var output : VSOut;
+    output.pos = vec4<f32>(X * c.w, Y * c.w, c.z, c.w);
+    output.splatPos = ndcPos;
+    output.color = vec4<f32>(splat.color, splat.opacity);
+    output.cov = vec3<f32>(cxx_p, cxy_p, cyy_p);
+    return output;
 }
 
 @fragment
-fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
-    return in.color;
+fn fs_main(  
+    in : VSOut
+) -> @location(0) vec4<f32> {
+    // Normalize to [0,1] screen coordinates
+    // in.pos is now fragCoord somehow???
+    // fragCoord.y grows upwards, so we need to flip it
+    let fragNDC = vec2<f32>(
+        in.pos.x / f32(uCParams.width) * 2.0 - 1.0,
+        (1.0 - in.pos.y / f32(uCParams.height)) * 2.0 - 1.0
+    );
+    let centerNDC = in.splatPos.xy;
+
+    // in NDC space
+    let dx = fragNDC.x - centerNDC.x;
+    let dy = fragNDC.y - centerNDC.y;
+
+    let cxx = in.cov.x;
+    let cxy = in.cov.y;
+    let cyy = in.cov.z;
+
+    let det = cxx * cyy - cxy * cxy;
+    if (det <= 0.0) {
+        discard; // broken, skip
+    }
+
+    let invDet = 1.0 / det;
+
+    let invCxx =  cyy * invDet;
+    let invCxy = -cxy * invDet;
+    let invCyy =  cxx * invDet;
+
+    // Mahalanobis distance squared
+    let dist2 = dx * dx * invCxx + 2.0 * dx * dy * invCxy + dy * dy * invCyy;
+
+    if (dist2 > 9.0) { // 3 sigma
+        discard;
+    }
+
+    let weight = exp(-dist2 * 0.5);
+    let alpha = clamp(in.color.a * weight, 0.0, 1.0);
+
+    return vec4<f32>(in.color.rgb, alpha);
 }

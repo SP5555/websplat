@@ -94,10 +94,20 @@ export default class RasterSplatRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
 
+        // canvas width and height
+        // COPY_DST for canvas resize updates
+        this.canvasParamsBuffer = this.device.createBuffer({
+            label: "Canvas Params Buffer",
+            size: 2 * 4, // width and height as uint32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
+        this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
+
         this.vertexBuffer = this.device.createBuffer({
             label: "Vertex Buffer",
             size: BUFFER_MIN_SIZE,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
     }
 
@@ -108,14 +118,7 @@ export default class RasterSplatRenderer {
             vertex: {
                 module: this.rasterShader.getModule(),
                 entryPoint: 'vs_main',
-                buffers: [{
-                    arrayStride: this.floatsPerVertex * 4,
-                    attributes: [{
-                        shaderLocation: 0,
-                        offset: 0,
-                        format: 'float32x3',
-                    }],
-                }],
+                buffers: [],
             },
             fragment: {
                 module: this.rasterShader.getModule(),
@@ -137,15 +140,28 @@ export default class RasterSplatRenderer {
                 }]
             },
             primitive: {
-                topology: 'point-list',
+                topology: 'triangle-list',
                 cullMode: 'none',
+            },
+            depthStencil: {
+                format: 'depth24plus',
+                depthWriteEnabled: false,
+                depthCompare: 'less',
             },
         });
 
-        this.renderBindGroup = this.device.createBindGroup({
+        this.renderBindGroup0 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.cameraBuffer } },
+                { binding: 1, resource: { buffer: this.canvasParamsBuffer } },
+            ],
+        });
+
+        this.renderBindGroup1 = this.device.createBindGroup({
+            layout: this.renderPipeline.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.vertexBuffer } },
             ],
         });
     }
@@ -161,6 +177,9 @@ export default class RasterSplatRenderer {
         this.resizeCanvas();
         this.configureContext();
         this.camera.updateAspect(this.canvas.width / this.canvas.height);
+
+        const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
+        this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
     }
 
     resizeCanvas() {
@@ -186,7 +205,14 @@ export default class RasterSplatRenderer {
         this.vertexBuffer = this.device.createBuffer({
             label: "Vertex Buffer",
             size: bufferData.byteLength,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        this.renderBindGroup1 = this.device.createBindGroup({
+            layout: this.renderPipeline.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.vertexBuffer } },
+            ],
         });
     }
 
@@ -207,13 +233,24 @@ export default class RasterSplatRenderer {
                     loadOp: 'clear',
                     storeOp: 'store'
                 }],
+                depthStencilAttachment: {
+                    view: this.device.createTexture({
+                        size: [this.canvas.width, this.canvas.height],
+                        format: 'depth24plus',
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+                    }).createView(),
+                    depthLoadOp: 'clear',
+                    depthClearValue: 1.0,
+                    depthStoreOp: 'store',
+                },
             });
 
             pass.setPipeline(this.renderPipeline);
-            pass.setBindGroup(0, this.renderBindGroup);
-            pass.setVertexBuffer(0, this.vertexBuffer);
+            pass.setBindGroup(0, this.renderBindGroup0);
+            pass.setBindGroup(1, this.renderBindGroup1);
             if (this.vertexCount) {
-                pass.draw(this.vertexCount, 3, 0, 0);
+                // draw call: 6 vertices per splat quad
+                pass.draw(6, this.vertexCount, 0, 0);
             }
             pass.end();
         }
