@@ -6,6 +6,9 @@ import WGSLShader from "../gpu/shaders/wgsl-shader.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
 
+/* Can't handle Z-depth correctly yet */
+/* maybe even impossible without hacks? */
+
 export default class RasterSplatRenderer {
     constructor(input) {
         this.input = input;
