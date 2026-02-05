@@ -1,7 +1,7 @@
 'use strict';
 
 import Camera from "../scene/camera.js";
-import { SplatVertexPacker } from "../gaussian/splat-vertex-packer.js";
+import { SplatDataPacker } from "../gaussian/splat-data-packer.js";
 import WGSLShader from "../gpu/shaders/wgsl-shader.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
@@ -19,10 +19,10 @@ export default class RasterSplatRenderer {
         this.canvas = document.getElementById('canvas00');
         this.device = null;
         this.context = null;
-        
+
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
-        this.vertexCount = 0;
-        this.floatsPerVertex = 16;
+        this.splatCount = 0;
+        this.FLOATS_PER_SPLAT3D = 16;
 
         this.renderPipeline = null;
         
@@ -107,6 +107,7 @@ export default class RasterSplatRenderer {
         const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
         this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
 
+        // holds splat data
         this.vertexBuffer = this.device.createBuffer({
             label: "Vertex Buffer",
             size: BUFFER_MIN_SIZE,
@@ -210,20 +211,19 @@ export default class RasterSplatRenderer {
     /* ===== ===== Mesh Management ===== ===== */
 
     setMeshData(meshData) {
-        const { vertexCount, floatsPerVertex, bufferData } = SplatVertexPacker.build(meshData);
-        this.vertexCount = vertexCount;
-        this.floatsPerVertex = floatsPerVertex;
+        const { splatCount, bufferData } = SplatDataPacker.build(meshData);
+        this.splatCount = splatCount;
 
-        this.reallocateVertexBuffer(bufferData);
+        this.reallocateBuffers(splatCount);
 
         this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData.buffer);
     }
 
-    reallocateVertexBuffer(bufferData) {
+    reallocateBuffers(splatCount) {
         if (this.vertexBuffer) this.vertexBuffer.destroy();
         this.vertexBuffer = this.device.createBuffer({
             label: "Vertex Buffer",
-            size: bufferData.byteLength,
+            size: splatCount * this.FLOATS_PER_SPLAT3D * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
@@ -263,9 +263,9 @@ export default class RasterSplatRenderer {
             pass.setPipeline(this.renderPipeline);
             pass.setBindGroup(0, this.renderBindGroup0);
             pass.setBindGroup(1, this.renderBindGroup1);
-            if (this.vertexCount) {
+            if (this.splatCount) {
                 // draw call: 6 vertices per splat quad
-                pass.draw(6, this.vertexCount, 0, 0);
+                pass.draw(6, this.splatCount, 0, 0);
             }
             pass.end();
         }

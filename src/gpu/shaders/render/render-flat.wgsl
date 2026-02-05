@@ -2,12 +2,10 @@ struct VertexOutput {
     @builtin(position) Position : vec4<f32>,
 };
 
-struct Vertex {
+struct Splat2D {
     pos : vec3<f32>,
-    opacity : f32,
-    cov1 : vec3<f32>,
-    cov2 : vec3<f32>,
-    color : vec3<f32>,
+    cov : vec3<f32>,
+    color : vec4<f32>,
 };
 
 struct GlobalParams {
@@ -25,7 +23,7 @@ struct CanvasParams {
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 @group(0) @binding(1) var<uniform> uCParams : CanvasParams;
 
-@group(1) @binding(0) var<storage, read> inVertices : array<Vertex>;
+@group(1) @binding(0) var<storage, read> inSplats : array<Splat2D>;
 @group(1) @binding(1) var<storage, read> inTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
 
@@ -44,7 +42,10 @@ fn vs_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
 
 @fragment
 fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
-    let uv = fragCoord.xy / vec2<f32>(f32(uCParams.width), f32(uCParams.height));
+    let uv = vec2<f32>(
+        fragCoord.x / f32(uCParams.width),
+        1.0 - fragCoord.y / f32(uCParams.height)
+    );
     let tileX = u32(clamp(floor(uv.x * f32(uGParams.gridX)), 0.0, f32(uGParams.gridX - 1)));
     let tileY = u32(clamp(floor(uv.y * f32(uGParams.gridY)), 0.0, f32(uGParams.gridY - 1)));
     let tileID = u32(tileY * uGParams.gridX + tileX);
@@ -58,14 +59,14 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     let fragNDC = uv * 2.0 - vec2<f32>(1.0);
 
     for (var i = 0u; i < count; i = i + 1u) {
-        let v = inVertices[inTileIndices[tileID * uGParams.maxPerTile + i]];
+        let s = inSplats[inTileIndices[tileID * uGParams.maxPerTile + i]];
 
-        let dx = fragNDC.x - v.pos.x;
-        let dy = fragNDC.y - v.pos.y;
+        let dx = fragNDC.x - s.pos.x;
+        let dy = fragNDC.y - s.pos.y;
 
-        let cxx = v.cov1.x;
-        let cxy = v.cov1.y;
-        let cyy = v.cov1.z;
+        let cxx = s.cov.x;
+        let cxy = s.cov.y;
+        let cyy = s.cov.z;
 
         let det = cxx * cyy - cxy * cxy;
         if (det <= 0.0) {
@@ -81,9 +82,9 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         let dist2 = dx * dx * invCxx + 2.0 * dx * dy * invCxy + dy * dy * invCyy;
 
         if (dist2 < 9.0) { // 3 sigma
-            let alpha = clamp(v.opacity, 0.0, 1.0);
+            let alpha = clamp(s.color.a, 0.0, 1.0);
 
-            accumColor += (1.0 - accumAlpha) * v.color * alpha;
+            accumColor += (1.0 - accumAlpha) * s.color.rgb * alpha;
             accumAlpha += (1.0 - accumAlpha) * alpha;
 
             // very opaque, stop early
@@ -93,5 +94,5 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
-    return vec4<f32>(accumColor, 1.0);
+    return vec4<f32>(accumColor, accumAlpha);
 }

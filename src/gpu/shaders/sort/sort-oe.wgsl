@@ -16,7 +16,7 @@ struct GlobalParams {
 
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 
-@group(1) @binding(0) var<storage, read> inVerticesZ : array<f32>;
+@group(1) @binding(0) var<storage, read> inSplatsZ : array<f32>;
 @group(1) @binding(1) var<storage, read_write> inOutTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
 
@@ -62,8 +62,8 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
             let leftVertexIdx = inOutTileIndices[leftIdx];
             let rightVertexIdx = inOutTileIndices[rightIdx];
 
-            let leftZ = inVerticesZ[leftVertexIdx];
-            let rightZ = inVerticesZ[rightVertexIdx];
+            let leftZ = inSplatsZ[leftVertexIdx];
+            let rightZ = inSplatsZ[rightVertexIdx];
 
             // swap if out of order (farther vertex has larger z in NDC)
             if (leftZ > rightZ) {

@@ -4,15 +4,20 @@ struct Camera {
     pvMatrix : mat4x4<f32>,
 };
 
-struct Vertex {
+struct Splat3D {
     pos : vec3<f32>,
-    opacity : f32,
     cov1 : vec3<f32>,
     cov2 : vec3<f32>,
-    color : vec3<f32>,
+    color : vec4<f32>,
 };
 
-// in vertices
+struct Splat2D {
+    pos : vec3<f32>,
+    cov : vec3<f32>,
+    color : vec4<f32>,
+};
+
+// in 3DSplat
 // cov1 = (cxx, cxy, cxz)
 // cov2 = (cyy, cyz, czz)
 // therefore, 3x3 covariance is reconstructed as:
@@ -20,31 +25,30 @@ struct Vertex {
 // [ cxy cyy cyz ]
 // [ cxz cyz czz ]
 
-// in outVertices
+// in 2DSplat
 // the transformed covariances in screen space is:
 // [ cxx' cxy' ]
 // [ cxy' cyy' ]
 // where
-// cov1 = (cxx', cxy', cyy')
-// cov2 = unused
+// cov = (cxx', cxy', cyy')
 
 @group(0) @binding(0) var<uniform> uCamera : Camera;
 
-@group(1) @binding(0) var<storage, read> inVertices : array<Vertex>;
-@group(1) @binding(1) var<storage, read_write> outVertices : array<Vertex>;
-@group(1) @binding(2) var<storage, read_write> outVerticesZ : array<f32>;
+@group(1) @binding(0) var<storage, read> inSplats : array<Splat3D>;
+@group(1) @binding(1) var<storage, read_write> outSplats : array<Splat2D>;
+@group(1) @binding(2) var<storage, read_write> outSplatsZ : array<f32>;
 
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
-    if (i >= arrayLength(&inVertices)) { return; }
+    if (i >= arrayLength(&inSplats)) { return; }
 
-    var v = inVertices[i];
+    var s = inSplats[i];
 
     let pvM4x4 = uCamera.pvMatrix;
 
     /* ===== position transform ===== */
-    let c = pvM4x4 * vec4<f32>(v.pos.xyz, 1.0);
+    let c = pvM4x4 * vec4<f32>(s.pos.xyz, 1.0);
     // perspective divide
     let transformedPos = vec3<f32>(
         c.x / c.w,
@@ -54,9 +58,9 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     /* ===== covariance transform ===== */
     let cov = mat3x3<f32>(
-        v.cov1.x, v.cov1.y, v.cov1.z,
-        v.cov1.y, v.cov2.x, v.cov2.y,
-        v.cov1.z, v.cov2.y, v.cov2.z
+        s.cov1.x, s.cov1.y, s.cov1.z,
+        s.cov1.y, s.cov2.x, s.cov2.y,
+        s.cov1.z, s.cov2.y, s.cov2.z
     );
     let w = max(c.w, 1e-6);
     let inv_c_w2 = 1.0 / (w * w);
@@ -160,13 +164,11 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     // let cxy_p = J_W_cov_WT_JT[0][1];
     // let cyy_p = J_W_cov_WT_JT[1][1];
 
-    outVertices[i] = Vertex(
+    outSplats[i] = Splat2D(
         transformedPos,
-        v.opacity,
         vec3<f32>(cxx_p, cxy_p, cyy_p),
-        v.cov2,
-        v.color
+        s.color
     );
 
-    outVerticesZ[i] = transformedPos.z;
+    outSplatsZ[i] = transformedPos.z;
 }

@@ -6,13 +6,14 @@ export function GaussianPrecompute(raw) {
     // positions, scales, rotations, opacities are Float32Arrays
     const { vertexCount, positions, scales, rotations, colors, opacities } = raw;
 
-    const covariances = new Float32Array(vertexCount * 6);
+    const splatCount = vertexCount;
+    const covariances = new Float32Array(splatCount * 6);
 
     const R = mat3.create();
     const S = mat3.create();
     const cov = mat3.create();
 
-    for (let i = 0; i < vertexCount; i++) {
+    for (let i = 0; i < splatCount; i++) {
 
         // unpack scale
         const sx = scales[i*3 + 0];
@@ -60,7 +61,7 @@ export function GaussianPrecompute(raw) {
     }
 
     return {
-        vertexCount,
+        splatCount,
         positions,
         covariances,
         colors,

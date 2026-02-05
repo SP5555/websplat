@@ -11,10 +11,9 @@ struct CanvasParams {
 
 struct Splat {
     pos : vec3<f32>,
-    opacity : f32,
     cov1 : vec3<f32>,
     cov2 : vec3<f32>,
-    color : vec3<f32>,
+    color : vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> uCamera : Camera;
@@ -107,7 +106,7 @@ fn vs_main(
     var output : VSOut;
     output.pos = vec4<f32>(X * c.w, Y * c.w, c.z, c.w);
     output.splatPos = ndcPos;
-    output.color = vec4<f32>(splat.color, splat.opacity);
+    output.color = splat.color;
     output.cov = vec3<f32>(cxx_p, cxy_p, cyy_p);
     return output;
 }

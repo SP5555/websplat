@@ -17,7 +17,7 @@ struct GlobalParams {
 
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 
-@group(1) @binding(0) var<storage, read> inVerticesZ : array<f32>;
+@group(1) @binding(0) var<storage, read> inSplatsZ : array<f32>;
 @group(1) @binding(1) var<storage, read_write> inOutTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
 
@@ -36,8 +36,8 @@ fn compare_and_swap(leftIdx: u32, rightIdx: u32) {
         return; // both sentinels
     }
 
-    let leftZ  = select(1.0, inVerticesZ[leftVertexIdx], leftVertexIdx != 0xFFFFFFFF);
-    let rightZ = select(1.0, inVerticesZ[rightVertexIdx], rightVertexIdx != 0xFFFFFFFF);
+    let leftZ  = select(1.0, inSplatsZ[leftVertexIdx], leftVertexIdx != 0xFFFFFFFF);
+    let rightZ = select(1.0, inSplatsZ[rightVertexIdx], rightVertexIdx != 0xFFFFFFFF);
 
     if (leftZ > rightZ) {
         inOutTileIndices[leftIdx]  = rightVertexIdx;

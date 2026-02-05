@@ -2,12 +2,10 @@ struct VertexOutput {
     @builtin(position) Position : vec4<f32>,
 };
 
-struct Vertex {
+struct Splat2D {
     pos : vec3<f32>,
-    opacity : f32,
-    cov1 : vec3<f32>,
-    cov2 : vec3<f32>,
-    color : vec3<f32>,
+    cov : vec3<f32>,
+    color : vec4<f32>,
 };
 
 struct GlobalParams {
@@ -25,7 +23,7 @@ struct CanvasParams {
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 @group(0) @binding(1) var<uniform> uCParams : CanvasParams;
 
-@group(1) @binding(0) var<storage, read> inVertices : array<Vertex>;
+@group(1) @binding(0) var<storage, read> inSplats : array<Splat2D>;
 @group(1) @binding(1) var<storage, read> inTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
 
@@ -65,14 +63,14 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     let fragNDC = uv * 2.0 - vec2<f32>(1.0);
 
     for (var i = 0u; i < count; i = i + 1u) {
-        let v = inVertices[inTileIndices[tileID * uGParams.maxPerTile + i]];
+        let s = inSplats[inTileIndices[tileID * uGParams.maxPerTile + i]];
 
-        let dx = fragNDC.x - v.pos.x;
-        let dy = fragNDC.y - v.pos.y;
+        let dx = fragNDC.x - s.pos.x;
+        let dy = fragNDC.y - s.pos.y;
 
-        let cxx = v.cov1.x;
-        let cxy = v.cov1.y;
-        let cyy = v.cov1.z;
+        let cxx = s.cov.x;
+        let cxy = s.cov.y;
+        let cyy = s.cov.z;
 
         let det = cxx * cyy - cxy * cxy;
         if (det <= 0.0) {
@@ -89,9 +87,9 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
 
         if (dist2 < 9.0) { // 3 sigma
             let weight = exp(-dist2 * 0.5);
-            let alpha = clamp(v.opacity * weight, 0.0, 1.0);
+            let alpha = clamp(s.color.a * weight, 0.0, 1.0);
 
-            accumColor += (1.0 - accumAlpha) * v.color * alpha;
+            accumColor += (1.0 - accumAlpha) * s.color.rgb * alpha;
             accumAlpha += (1.0 - accumAlpha) * alpha;
 
             // very opaque, stop early
@@ -101,5 +99,5 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
-    return vec4<f32>(accumColor, 1.0);
+    return vec4<f32>(accumColor, accumAlpha);
 }

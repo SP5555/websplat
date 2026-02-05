@@ -1,7 +1,7 @@
 'use strict';
 
 import Camera from "../scene/camera.js";
-import { SplatVertexPacker } from "../gaussian/splat-vertex-packer.js";
+import { SplatDataPacker } from "../gaussian/splat-data-packer.js";
 import WGSLShader from "../gpu/shaders/wgsl-shader.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
@@ -9,11 +9,11 @@ const BUFFER_MIN_SIZE = 80; // bytes
 export default class ComputeSplatRenderer {
     constructor(input) {
         // max buffer size limit = 2^27 bytes
-        // GRID_SIZE.x * GRID_SIZE.y * MAX_VERTICES_PER_TILE * 4 <= 2^27
+        // GRID_SIZE.x * GRID_SIZE.y * MAX_SPLATS_PER_TILE * 4 <= 2^27
         // keep the grid dimensions the power of 2
         // otherwise, sorting shader won't work correctly
         this.GRID_SIZE = { x: 32, y: 32 };
-        this.MAX_VERTICES_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
+        this.MAX_SPLATS_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
         this.clearTilesShaderPath = './src/gpu/shaders/clear-tiles/clear-tiles.wgsl';
         this.transformShaderPath  = './src/gpu/shaders/transform/transform.wgsl';
@@ -27,8 +27,9 @@ export default class ComputeSplatRenderer {
         this.context = null;
         
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
-        this.vertexCount = 0;
-        this.floatsPerVertex = 0;
+        this.splatCount = 0;
+        this.FLOATS_PER_SPLAT3D = 16;
+        this.FLOATS_PER_SPLAT2D = 12;
         
         /* ===== Pipelines ===== */
         // 0th "reset" pipeline
@@ -126,21 +127,21 @@ export default class ComputeSplatRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
 
-        // buffer that holds the input vertex data for the transform pass
+        // buffer that holds the input splat data for the transform pass
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
-        // buffer that holds the transformed vertex data from the transform pass
+        // buffer that holds the transformed splat data from the transform pass
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
-        // buffer that holds the transformed vertex Z positions,
+        // buffer that holds the transformed splat Z positions,
         // used for depth sorting during the sort pass for faster memory access
         this.transformOutputPosZBuffer = this.device.createBuffer({
             label: "Transform Output PosZ Buffer",
@@ -148,28 +149,28 @@ export default class ComputeSplatRenderer {
             usage: GPUBufferUsage.STORAGE
         });
 
-        // each tile holds MAX_VERTICES_PER_TILE indices (uint32)
+        // each tile holds MAX_SPLATS_PER_TILE indices (uint32)
         this.tileIndicesBuffer = this.device.createBuffer({
             label: "Tile Indices Buffer",
-            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
+            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_SPLATS_PER_TILE * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
-        // holds the current number of vertices in each tile (uint32)
+        // holds the current number of splats in each tile (uint32)
         this.tileCountersBuffer = this.device.createBuffer({
             label: "Tile Counters Buffer",
             size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per tile
             usage: GPUBufferUsage.STORAGE
         });
 
-        // vertex count in the scene, grid sizes and max vertices a tile can hold
-        // COPY_DST for future GRID_SIZE or MAX_VERTICES_PER_TILE changes
+        // splat count in the scene, grid sizes and max splats a tile can hold
+        // COPY_DST for future GRID_SIZE or MAX_SPLATS_PER_TILE changes
         this.globalParamsBuffer = this.device.createBuffer({
             label: "Global Params Buffer",
             size: 4 * 4, // 4x uint32
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
-        const globalParams = new Uint32Array([this.vertexCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_VERTICES_PER_TILE]);
+        const globalParams = new Uint32Array([this.splatCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_SPLATS_PER_TILE]);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
 
         // canvas width and height
@@ -352,49 +353,48 @@ export default class ComputeSplatRenderer {
     /* ===== ===== Mesh Management ===== ===== */
 
     setMeshData(meshData) {
-        const { vertexCount, floatsPerVertex, bufferData } = SplatVertexPacker.build(meshData);
-        this.vertexCount = vertexCount;
-        this.floatsPerVertex = floatsPerVertex;
+        const { splatCount, bufferData } = SplatDataPacker.build(meshData);
+        this.splatCount = splatCount;
 
-        this.reallocateVertexBuffer(bufferData);
+        this.reallocateBuffers(splatCount);
 
         const globalParams = new Uint32Array([
-            vertexCount,
+            splatCount,
             this.GRID_SIZE.x,
             this.GRID_SIZE.y,
-            this.MAX_VERTICES_PER_TILE
+            this.MAX_SPLATS_PER_TILE
         ]);
 
         this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
     }
 
-    reallocateVertexBuffer(bufferData) {
+    reallocateBuffers(splatCount) {
         if (this.transformInputBuffer) this.transformInputBuffer.destroy();
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
-            size: bufferData.byteLength,
+            size: splatCount * this.FLOATS_PER_SPLAT3D * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
         this.transformOutputBuffer = this.device.createBuffer({
             label: "Transform Output Buffer",
-            size: bufferData.byteLength,
+            size: splatCount * this.FLOATS_PER_SPLAT2D * 4,
             usage: GPUBufferUsage.STORAGE
         });
 
         if (this.transformOutputPosZBuffer) this.transformOutputPosZBuffer.destroy();
         this.transformOutputPosZBuffer = this.device.createBuffer({
             label: "Transform Output PosZ Buffer",
-            size: this.vertexCount * 4, // 1x f32 per vertex
+            size: splatCount * 4, // 1x f32 per splat
             usage: GPUBufferUsage.STORAGE
         });
 
         if (this.tileIndicesBuffer) this.tileIndicesBuffer.destroy();
         this.tileIndicesBuffer = this.device.createBuffer({
             label: "Tile Indices Buffer",
-            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_VERTICES_PER_TILE * 4),
+            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_SPLATS_PER_TILE * 4),
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -470,7 +470,7 @@ export default class ComputeSplatRenderer {
             pass.setBindGroup(0, this.transformBindGroup0);
             pass.setBindGroup(1, this.transformBindGroup1);
             const WGSize = 128;
-            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
+            const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
         }
@@ -482,7 +482,7 @@ export default class ComputeSplatRenderer {
             pass.setBindGroup(0, this.tileBindGroup0);
             pass.setBindGroup(1, this.tileBindGroup1);
             const WGSize = 128;
-            const numWorkgroups = Math.max(8, Math.ceil(this.vertexCount / WGSize));
+            const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / WGSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
         }

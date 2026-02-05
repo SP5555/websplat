@@ -1,9 +1,7 @@
-struct Vertex {
+struct Splat2D {
     pos : vec3<f32>,
-    opacity : f32,
-    cov1 : vec3<f32>,
-    cov2 : vec3<f32>,
-    color : vec3<f32>,
+    cov : vec3<f32>,
+    color : vec4<f32>,
 };
 
 struct GlobalParams {
@@ -21,7 +19,7 @@ struct CanvasParams {
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 @group(0) @binding(1) var<uniform> uCParams : CanvasParams;
 
-@group(1) @binding(0) var<storage, read> inVertices : array<Vertex>;
+@group(1) @binding(0) var<storage, read> inSplats : array<Splat2D>;
 @group(1) @binding(1) var<storage, read_write> outTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read_write> outTileCounters : array<atomic<u32>>;
 
@@ -43,17 +41,17 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
     if (i >= uGParams.vertexCount) { return; }
 
-    let v = inVertices[i];
+    let s = inSplats[i];
 
     // point outside clip space
-    if (abs(v.pos.z) > 1.0 || abs(v.pos.x) > 1.0 || abs(v.pos.y) > 1.0) {
+    if (abs(s.pos.z) > 1.0 || abs(s.pos.x) > 1.0 || abs(s.pos.y) > 1.0) {
         return;
     }
 
     // compute 3 sigma "radius" of the ellipse 
-    let cxx = v.cov1.x;
-    let cxy = v.cov1.y;
-    let cyy = v.cov1.z;
+    let cxx = s.cov.x;
+    let cxy = s.cov.y;
+    let cyy = s.cov.z;
 
     let trace = cxx + cyy;
     let det = cxx * cyy - cxy * cxy;
@@ -84,10 +82,10 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    let minX = v.pos.x - maxRadius;
-    let maxX = v.pos.x + maxRadius;
-    let minY = v.pos.y - maxRadius;
-    let maxY = v.pos.y + maxRadius;
+    let minX = s.pos.x - maxRadius;
+    let maxX = s.pos.x + maxRadius;
+    let minY = s.pos.y - maxRadius;
+    let maxY = s.pos.y + maxRadius;
 
     let x0 = clamp(i32(floor((minX + 1.0)*0.5 * f32(uGParams.gridX))), 0, i32(uGParams.gridX)-1);
     let x1 = clamp(i32(floor((maxX + 1.0)*0.5 * f32(uGParams.gridX))), 0, i32(uGParams.gridX)-1);

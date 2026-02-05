@@ -1,7 +1,7 @@
 'use strict';
 
 import ComputeSplatRenderer from "../renderer/compute-splat-renderer.js";
-import RasterSplatRenderer from "../renderer/raster-splat-renderer.js";
+// import RasterSplatRenderer from "../renderer/raster-splat-renderer.js";
 import GUIManager from "../gui/gui-manager.js";
 import HUDManager from "../hud/hud-manager.js";
 import PLYLoader from "../loaders/ply-loader.js";
@@ -52,7 +52,6 @@ export default class App {
         this.overlayFrameCount++;
 
         if (this.overlayAccumulator >= 0.25) {
-            const fps = this.overlayFrameCount / this.overlayAccumulator;
             this.hud.updateFPS(this.overlayAccumulator, this.overlayFrameCount);
 
             this.overlayAccumulator = 0;
