@@ -58,12 +58,14 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
 
     let countPow2 = next_pow2(countInTile);
 
-    // bitonic must operate on the whole array of size MAX_PER_TILE
+    // bitonic must operate on the whole array of size countPow2
     // thus, unused index slots are filled with max Uint32 value
     let compsPerThread = (countPow2 + THREADS_PER_WORKGROUP - 1u) / THREADS_PER_WORKGROUP;
     let baseIdx = tileID * MAX_PER_TILE;
 
     // bitonic sort in global memory
+    // local workgroup memory version would be faster
+    // but avoided due to size limitations
     var k = 2u;
     while (k <= countPow2) {
 
