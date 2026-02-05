@@ -23,8 +23,8 @@ struct CanvasParams {
 @group(1) @binding(1) var<storage, read_write> outTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read_write> outTileCounters : array<atomic<u32>>;
 
-fn toIndex(x : i32, y : i32) -> u32 {
-    return u32(y * i32(uGParams.gridX) + x);
+fn toIndex(x : u32, y : u32) -> u32 {
+    return u32(y * uGParams.gridX + x);
 }
 
 fn tryPush(tileIdx: u32, splatIdx: u32) {
@@ -87,10 +87,10 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let minY = s.pos.y - maxRadius;
     let maxY = s.pos.y + maxRadius;
 
-    let x0 = clamp(i32(floor((minX + 1.0)*0.5 * f32(uGParams.gridX))), 0, i32(uGParams.gridX)-1);
-    let x1 = clamp(i32(floor((maxX + 1.0)*0.5 * f32(uGParams.gridX))), 0, i32(uGParams.gridX)-1);
-    let y0 = clamp(i32(floor((minY + 1.0)*0.5 * f32(uGParams.gridY))), 0, i32(uGParams.gridY)-1);
-    let y1 = clamp(i32(floor((maxY + 1.0)*0.5 * f32(uGParams.gridY))), 0, i32(uGParams.gridY)-1);
+    let x0 = clamp(u32(floor((minX + 1.0)*0.5 * f32(uGParams.gridX))), 0u, uGParams.gridX-1u);
+    let x1 = clamp(u32(floor((maxX + 1.0)*0.5 * f32(uGParams.gridX))), 0u, uGParams.gridX-1u);
+    let y0 = clamp(u32(floor((minY + 1.0)*0.5 * f32(uGParams.gridY))), 0u, uGParams.gridY-1u);
+    let y1 = clamp(u32(floor((maxY + 1.0)*0.5 * f32(uGParams.gridY))), 0u, uGParams.gridY-1u);
 
     for (var ty = y0; ty <= y1; ty = ty + 1) {
         for (var tx = x0; tx <= x1; tx = tx + 1) {
