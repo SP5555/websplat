@@ -109,6 +109,12 @@ export default class RasterSplatRenderer {
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
+
+        this.depthTexture = this.device.createTexture({
+            size: [this.canvas.width, this.canvas.height],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
     }
 
     createRenderPipeline() {
@@ -137,6 +143,7 @@ export default class RasterSplatRenderer {
                             operation: 'add',
                         },
                     },
+                    writeMask: GPUColorWrite.ALL,
                 }]
             },
             primitive: {
@@ -185,6 +192,15 @@ export default class RasterSplatRenderer {
     resizeCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+
+        if (this.depthTexture) {
+            this.depthTexture.destroy();
+            this.depthTexture = this.device.createTexture({
+                size: [this.canvas.width, this.canvas.height],
+                format: 'depth24plus',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT,
+            });
+        }
     }
 
     
@@ -234,11 +250,7 @@ export default class RasterSplatRenderer {
                     storeOp: 'store'
                 }],
                 depthStencilAttachment: {
-                    view: this.device.createTexture({
-                        size: [this.canvas.width, this.canvas.height],
-                        format: 'depth24plus',
-                        usage: GPUTextureUsage.RENDER_ATTACHMENT,
-                    }).createView(),
+                    view: this.depthTexture.createView(),
                     depthLoadOp: 'clear',
                     depthClearValue: 1.0,
                     depthStoreOp: 'store',

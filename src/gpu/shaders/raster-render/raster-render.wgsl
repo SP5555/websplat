@@ -50,7 +50,6 @@ fn vs_main(
 
     let pvM4x4 = uCamera.pvMatrix;
     let aspect = f32(uCParams.width) / f32(uCParams.height);
-    let invAspect = 1.0 / aspect;
 
     /* ===== position transform ===== */
     let c = pvM4x4 * vec4<f32>(splat.pos, 1.0);
@@ -102,8 +101,8 @@ fn vs_main(
     // 3 sigma max radius in NDC space
     let maxRadius = 3.0 * sqrt(max(lambda1, lambda2));
 
-    let X = ndcPos.x + maxRadius * offsetDir.x * invAspect;
-    let Y = ndcPos.y + maxRadius * offsetDir.y;
+    let X = ndcPos.x + offsetDir.x * maxRadius / aspect;
+    let Y = ndcPos.y + offsetDir.y * maxRadius;
 
     var output : VSOut;
     output.pos = vec4<f32>(X * c.w, Y * c.w, c.z, c.w);
@@ -117,7 +116,7 @@ fn vs_main(
 fn fs_main(  
     in : VSOut
 ) -> @location(0) vec4<f32> {
-    // Normalize to [0,1] screen coordinates
+    // Normalize to [-1,1] screen coordinates
     // in.pos is now fragCoord somehow???
     // fragCoord.y grows upwards, so we need to flip it
     let fragNDC = vec2<f32>(
@@ -147,6 +146,8 @@ fn fs_main(
 
     // Mahalanobis distance squared
     let dist2 = dx * dx * invCxx + 2.0 * dx * dy * invCxy + dy * dy * invCyy;
+
+    // return vec4<f32>(1.0, 1.0, 1.0, 0.04);
 
     if (dist2 > 9.0) { // 3 sigma
         discard;
