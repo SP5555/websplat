@@ -5,7 +5,7 @@ struct Splat2D {
 };
 
 struct GlobalParams {
-    vertexCount : u32,
+    splatCount : u32,
     gridX : u32,
     gridY : u32,
     maxPerTile : u32,
@@ -27,19 +27,19 @@ fn toIndex(x : i32, y : i32) -> u32 {
     return u32(y * i32(uGParams.gridX) + x);
 }
 
-fn tryPush(tileIdx: u32, vertexIdx: u32) {
+fn tryPush(tileIdx: u32, splatIdx: u32) {
     // note: atomicAdd will overshoot the max
     // be sure to clamp the counter afterwards
     let idx = atomicAdd(&outTileCounters[tileIdx], 1u);
     if (idx < uGParams.maxPerTile) {
-        outTileIndices[tileIdx * uGParams.maxPerTile + idx] = vertexIdx;
+        outTileIndices[tileIdx * uGParams.maxPerTile + idx] = splatIdx;
     }
 }
 
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let i = gid.x;
-    if (i >= uGParams.vertexCount) { return; }
+    if (i >= uGParams.splatCount) { return; }
 
     let s = inSplats[i];
 

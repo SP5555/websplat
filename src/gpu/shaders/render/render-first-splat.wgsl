@@ -9,7 +9,7 @@ struct Splat2D {
 };
 
 struct GlobalParams {
-    vertexCount : u32,
+    splatCount : u32,
     gridX : u32,
     gridY : u32,
     maxPerTile : u32,

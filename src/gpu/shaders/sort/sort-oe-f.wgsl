@@ -4,14 +4,14 @@
     Sentinel indices (0xFFFFFFFF) are used for unused slots.
     Designed for one workgroup per tile.
     Uses shared memory to reduce global memory accesses.
-    however, can only handle up to MAX_VERTICES_PER_TILE vertices per tile.
+    however, can only handle up to MAX_SPLATS_PER_TILE splats per tile.
 */
 
 const THREADS_PER_WORKGROUP = 128u;
-const MAX_VERTICES_PER_TILE = 2048u;
+const MAX_SPLATS_PER_TILE = 2048u;
 
 struct GlobalParams {
-    vertexCount : u32,
+    splatCount : u32,
     gridX : u32,
     gridY : u32,
     maxPerTile : u32,
@@ -23,8 +23,8 @@ struct GlobalParams {
 @group(1) @binding(1) var<storage, read_write> inOutTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
 
-var<workgroup> localIndices : array<u32, MAX_VERTICES_PER_TILE>;
-var<workgroup> localVertZs : array<f32, MAX_VERTICES_PER_TILE>;
+var<workgroup> localIndices : array<u32, MAX_SPLATS_PER_TILE>;
+var<workgroup> localVertZs : array<f32, MAX_SPLATS_PER_TILE>;
 
 @compute @workgroup_size(THREADS_PER_WORKGROUP)
 fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
@@ -41,9 +41,9 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
 
     // load into shared memory from global memory
     for (var i = threadID; i < idxCountInTile; i = i + THREADS_PER_WORKGROUP) {
-        let vertexIdx = inOutTileIndices[baseIdx + i];
-        localIndices[i] = vertexIdx;
-        localVertZs[i] = inSplatsZ[vertexIdx];
+        let splatIdx = inOutTileIndices[baseIdx + i];
+        localIndices[i] = splatIdx;
+        localVertZs[i] = inSplatsZ[splatIdx];
     }
 
     // odd-even sort
@@ -71,16 +71,16 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
             let leftIdx = offset + compIdx * 2u;
             let rightIdx = leftIdx + 1u;
 
-            let leftVertexIdx = localIndices[leftIdx];
-            let rightVertexIdx = localIndices[rightIdx];
+            let leftSplatIdx = localIndices[leftIdx];
+            let rightSplatIdx = localIndices[rightIdx];
 
             let leftZ = localVertZs[leftIdx];
             let rightZ = localVertZs[rightIdx];
 
-            // swap if out of order (farther vertex has larger z in NDC)
+            // swap if out of order (farther splat has larger z in NDC)
             if (leftZ > rightZ) {
-                localIndices[leftIdx] = rightVertexIdx;
-                localIndices[rightIdx] = leftVertexIdx;
+                localIndices[leftIdx] = rightSplatIdx;
+                localIndices[rightIdx] = leftSplatIdx;
 
                 localVertZs[leftIdx] = rightZ;
                 localVertZs[rightIdx] = leftZ;

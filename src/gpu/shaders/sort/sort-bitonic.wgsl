@@ -9,7 +9,7 @@
 const THREADS_PER_WORKGROUP = 256u;
 
 struct GlobalParams {
-    vertexCount : u32,
+    splatCount : u32,
     gridX : u32,
     gridY : u32,
     maxPerTile : u32,
@@ -29,19 +29,19 @@ fn next_pow2(v: u32) -> u32 {
 }
 
 fn compare_and_swap(leftIdx: u32, rightIdx: u32) {
-    let leftVertexIdx  = inOutTileIndices[leftIdx];
-    let rightVertexIdx = inOutTileIndices[rightIdx];
+    let leftSplatIdx  = inOutTileIndices[leftIdx];
+    let rightSplatIdx = inOutTileIndices[rightIdx];
 
-    if (leftVertexIdx == 0xFFFFFFFFu && rightVertexIdx == 0xFFFFFFFFu) {
+    if (leftSplatIdx == 0xFFFFFFFFu && rightSplatIdx == 0xFFFFFFFFu) {
         return; // both sentinels
     }
 
-    let leftZ  = select(1.0, inSplatsZ[leftVertexIdx], leftVertexIdx != 0xFFFFFFFF);
-    let rightZ = select(1.0, inSplatsZ[rightVertexIdx], rightVertexIdx != 0xFFFFFFFF);
+    let leftZ  = select(1.0, inSplatsZ[leftSplatIdx], leftSplatIdx != 0xFFFFFFFF);
+    let rightZ = select(1.0, inSplatsZ[rightSplatIdx], rightSplatIdx != 0xFFFFFFFF);
 
     if (leftZ > rightZ) {
-        inOutTileIndices[leftIdx]  = rightVertexIdx;
-        inOutTileIndices[rightIdx] = leftVertexIdx;
+        inOutTileIndices[leftIdx]  = rightSplatIdx;
+        inOutTileIndices[rightIdx] = leftSplatIdx;
     }
 }
 

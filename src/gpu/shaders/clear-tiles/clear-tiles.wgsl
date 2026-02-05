@@ -1,7 +1,7 @@
 const THREADS_PER_WORKGROUP = 256u;
 
 struct GlobalParams {
-    vertexCount : u32,
+    splatCount : u32,
     gridX : u32,
     gridY : u32,
     maxPerTile : u32,

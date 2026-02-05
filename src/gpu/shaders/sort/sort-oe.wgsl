@@ -8,7 +8,7 @@
 const THREADS_PER_WORKGROUP = 256u;
 
 struct GlobalParams {
-    vertexCount : u32,
+    splatCount : u32,
     gridX : u32,
     gridY : u32,
     maxPerTile : u32,
@@ -59,16 +59,16 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
             let leftIdx = baseIdx + offset + compIdx * 2u;
             let rightIdx = leftIdx + 1u;
 
-            let leftVertexIdx = inOutTileIndices[leftIdx];
-            let rightVertexIdx = inOutTileIndices[rightIdx];
+            let leftSplatIdx = inOutTileIndices[leftIdx];
+            let rightSplatIdx = inOutTileIndices[rightIdx];
 
-            let leftZ = inSplatsZ[leftVertexIdx];
-            let rightZ = inSplatsZ[rightVertexIdx];
+            let leftZ = inSplatsZ[leftSplatIdx];
+            let rightZ = inSplatsZ[rightSplatIdx];
 
-            // swap if out of order (farther vertex has larger z in NDC)
+            // swap if out of order (farther splat has larger z in NDC)
             if (leftZ > rightZ) {
-                inOutTileIndices[leftIdx] = rightVertexIdx;
-                inOutTileIndices[rightIdx] = leftVertexIdx;
+                inOutTileIndices[leftIdx] = rightSplatIdx;
+                inOutTileIndices[rightIdx] = leftSplatIdx;
             }
         }
         // synchronize all threads before next iteration
