@@ -15,12 +15,29 @@ export default class GUIManager {
     setupGUI() {
         this.gui.add({ loadShader: () => this.fileInput.click() }, 'loadShader').name('Open PLY File');
 
-        const cameraState = { fov: 60 }; // default value
+        // default values
+        const state = {
+            fov: 50,
+            scaleMultiplier: 1.0,
+            showSfM: false,
+        };
 
-        this.gui.add(cameraState, 'fov', 10, 80, 1)
+        this.gui.add(state, 'fov', 10, 80, 1)
             .name('FOV')
             .onChange(value => {
                 eventBus.emit(EVENTS.CAMERA_FOV_CHANGE, value);
+            });
+
+        this.gui.add(state, 'scaleMultiplier', 0, 1, 0.01)
+            .name('Scale Multiplier')
+            .onChange(value => {
+                eventBus.emit(EVENTS.SCALE_MULTIPLIER_CHANGE, value);
+            });
+
+        this.gui.add(state, 'showSfM')
+            .name('Show SfM Points')
+            .onChange(value => {
+                eventBus.emit(EVENTS.SHOW_SFM_CHANGE, value);
             });
     }
 

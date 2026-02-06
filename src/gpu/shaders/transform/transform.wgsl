@@ -4,6 +4,16 @@ struct Camera {
     pvMatrix : mat4x4<f32>,
 };
 
+struct RenderParams {
+    scaleMultiplier : f32,
+    showSfMPoints : f32, // 0.0 = false, 1.0 = true
+};
+
+struct CanvasParams {
+    width : u32,
+    height : u32,
+};
+
 struct Splat3D {
     pos : vec3<f32>,
     cov1 : vec3<f32>,
@@ -11,13 +21,7 @@ struct Splat3D {
     color : vec4<f32>,
 };
 
-struct Splat2D {
-    pos : vec3<f32>,
-    cov : vec3<f32>,
-    color : vec4<f32>,
-};
-
-// in 3DSplat
+// in Splat3D
 // cov1 = (cxx, cxy, cxz)
 // cov2 = (cyy, cyz, czz)
 // therefore, 3x3 covariance is reconstructed as:
@@ -25,7 +29,13 @@ struct Splat2D {
 // [ cxy cyy cyz ]
 // [ cxz cyz czz ]
 
-// in 2DSplat
+struct Splat2D {
+    pos : vec3<f32>,
+    cov : vec3<f32>,
+    color : vec4<f32>,
+};
+
+// in Splat2D
 // the transformed covariances in screen space is:
 // [ cxx' cxy' ]
 // [ cxy' cyy' ]
@@ -33,6 +43,8 @@ struct Splat2D {
 // cov = (cxx', cxy', cyy')
 
 @group(0) @binding(0) var<uniform> uCamera : Camera;
+@group(0) @binding(1) var<uniform> uCanvasParams : CanvasParams;
+@group(0) @binding(2) var<uniform> uRenderParams : RenderParams;
 
 @group(1) @binding(0) var<storage, read> inSplats : array<Splat3D>;
 @group(1) @binding(1) var<storage, read_write> outSplats : array<Splat2D>;
@@ -164,10 +176,29 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     // let cxy_p = J_W_cov_WT_JT[0][1];
     // let cyy_p = J_W_cov_WT_JT[1][1];
 
+    var cxx_p_scaled : f32;
+    var cxy_p_scaled : f32;
+    var cyy_p_scaled : f32;
+    var color: vec4<f32>;
+    if (uRenderParams.showSfMPoints == 1.0) {
+        let invAspect = f32(uCanvasParams.height) / f32(uCanvasParams.width);
+        cxx_p_scaled = 2e-6 * invAspect;
+        cxy_p_scaled = 0.0;
+        cyy_p_scaled = 2e-6;
+        color = vec4<f32>(s.color.rgb, 1.0);
+    } else {
+        let scaleMultiplier = uRenderParams.scaleMultiplier;
+        let scaleMultiplierSq = scaleMultiplier * scaleMultiplier;
+        cxx_p_scaled = cxx_p * scaleMultiplierSq;
+        cxy_p_scaled = cxy_p * scaleMultiplierSq;
+        cyy_p_scaled = cyy_p * scaleMultiplierSq;
+        color = s.color;
+    }
+
     outSplats[i] = Splat2D(
         transformedPos,
-        vec3<f32>(cxx_p, cxy_p, cyy_p),
-        s.color
+        vec3<f32>(cxx_p_scaled, cxy_p_scaled, cyy_p_scaled),
+        color
     );
 
     outSplatsZ[i] = transformedPos.z;

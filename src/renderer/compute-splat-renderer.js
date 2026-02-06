@@ -3,6 +3,8 @@
 import Camera from "../scene/camera.js";
 import { SplatDataPacker } from "../gaussian/splat-data-packer.js";
 import WGSLShader from "../gpu/shaders/wgsl-shader.js";
+import { eventBus } from "../utils/event-emitters.js";
+import { EVENTS } from "../utils/event.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
 
@@ -30,6 +32,10 @@ export default class ComputeSplatRenderer {
         this.splatCount = 0;
         this.FLOATS_PER_SPLAT3D = 16;
         this.FLOATS_PER_SPLAT2D = 12;
+
+        /* ===== Render Params ===== */
+        this.scaleMultiplier = 1.0;
+        this.showSfMPoints = 0.0; // 0.0 = false, 1.0 = true
         
         /* ===== Pipelines ===== */
         // 0th "reset" pipeline
@@ -127,6 +133,14 @@ export default class ComputeSplatRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
 
+        // holds GUI-controlled render parameters
+        this.renderParamsBuffer = this.device.createBuffer({
+            label: "Render Params Buffer",
+            size: 8, // 2x f32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        this.updateRenderParams();
+
         // buffer that holds the input splat data for the transform pass
         this.transformInputBuffer = this.device.createBuffer({
             label: "Transform Input Buffer",
@@ -223,7 +237,9 @@ export default class ComputeSplatRenderer {
         this.transformBindGroup0 = this.device.createBindGroup({
             layout: this.transformPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.cameraBuffer } }
+                { binding: 0, resource: { buffer: this.cameraBuffer } },
+                { binding: 1, resource: { buffer: this.canvasParamsBuffer } },
+                { binding: 2, resource: { buffer: this.renderParamsBuffer } }
             ]
         });
 
@@ -331,6 +347,16 @@ export default class ComputeSplatRenderer {
 
     initializeEventListeners() {
         window.addEventListener('resize', () => this.onWindowResize(), false);
+
+        eventBus.on(EVENTS.SCALE_MULTIPLIER_CHANGE, value => {
+            this.scaleMultiplier = value;
+            this.updateRenderParams();
+        });
+
+        eventBus.on(EVENTS.SHOW_SFM_CHANGE, value => {
+            this.showSfMPoints = value ? 1.0 : 0.0;
+            this.updateRenderParams();
+        });
     }
 
     onWindowResize() {
@@ -527,5 +553,10 @@ export default class ComputeSplatRenderer {
         cameraData.set(this.camera.pvMatrix, 32);
 
         this.device.queue.writeBuffer(this.cameraBuffer, 0, cameraData.buffer);
+    }
+
+    updateRenderParams() {
+        const renderParams = new Float32Array([this.scaleMultiplier, this.showSfMPoints]);
+        this.device.queue.writeBuffer(this.renderParamsBuffer, 0, renderParams.buffer);
     }
 }
