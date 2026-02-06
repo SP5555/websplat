@@ -17,11 +17,11 @@ export default class ComputeSplatRenderer {
         this.GRID_SIZE = { x: 32, y: 32 };
         this.MAX_SPLATS_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
-        this.clearTilesShaderPath = './src/gpu/shaders/clear-tiles/clear-tiles.wgsl';
-        this.transformShaderPath  = './src/gpu/shaders/transform/transform.wgsl';
-        this.tileShaderPath       = './src/gpu/shaders/tile/tile.wgsl';
-        this.sortShaderPath       = './src/gpu/shaders/sort/sort-bitonic.wgsl';
-        this.renderShaderPath     = './src/gpu/shaders/render/render.wgsl';
+        this.clearTilesShaderPath = './src/gpu/shaders/compute/clear-tiles/clear-tiles.wgsl';
+        this.transformShaderPath  = './src/gpu/shaders/compute/transform/transform.wgsl';
+        this.tileShaderPath       = './src/gpu/shaders/compute/tile/tile.wgsl';
+        this.sortShaderPath       = './src/gpu/shaders/compute/sort/sort-bitonic.wgsl';
+        this.renderShaderPath     = './src/gpu/shaders/compute/render/render.wgsl';
 
         /* ===== Private Zone ===== */
         this.canvas = document.getElementById('canvas00');
@@ -384,14 +384,14 @@ export default class ComputeSplatRenderer {
 
         this.reallocateBuffers(splatCount);
 
+        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
+
         const globalParams = new Uint32Array([
             splatCount,
             this.GRID_SIZE.x,
             this.GRID_SIZE.y,
             this.MAX_SPLATS_PER_TILE
         ]);
-
-        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
     }
 

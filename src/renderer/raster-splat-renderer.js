@@ -3,6 +3,8 @@
 import Camera from "../scene/camera.js";
 import { SplatDataPacker } from "../gaussian/splat-data-packer.js";
 import WGSLShader from "../gpu/shaders/wgsl-shader.js";
+import { EVENTS } from "../utils/event.js";
+import { eventBus } from "../utils/event-emitters.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
 
@@ -13,7 +15,9 @@ export default class RasterSplatRenderer {
     constructor(input) {
         this.input = input;
 
-        this.rasterShaderPath = './src/gpu/shaders/raster-render/raster-render.wgsl';
+        this.transformShaderPath  = './src/gpu/shaders/raster/transform/transform.wgsl';
+        this.sortShaderPath       = './src/gpu/shaders/raster/sort/sort.wgsl';
+        this.rasterShaderPath     = './src/gpu/shaders/raster/render/render.wgsl';
 
         /* ===== Private Zone ===== */
         this.canvas = document.getElementById('canvas00');
@@ -23,7 +27,15 @@ export default class RasterSplatRenderer {
         this.camera = new Camera(input, this.canvas.width / this.canvas.height);
         this.splatCount = 0;
         this.FLOATS_PER_SPLAT3D = 16;
+        this.FLOATS_PER_SPLAT2D = 12;
+        
+        /* ===== Render Params ===== */
+        this.scaleMultiplier = 1.0;
+        this.showSfMPoints = 0.0; // 0.0 = false, 1.0 = true
 
+        /* ===== Pipelines ===== */
+        this.transformPipeline = null;
+        this.sortPipeline = null;
         this.renderPipeline = null;
         
         this.isPipelineInitialized = false;
@@ -79,12 +91,20 @@ export default class RasterSplatRenderer {
 
         this.createDataBuffers();
 
+        this.createTransformPipeline();
+        this.createSortPipeline();
         this.createRenderPipeline();
 
         this.isPipelineInitialized = true;
     }
 
     async initShaders() {
+        this.transformShader = new WGSLShader(this.device, this.transformShaderPath);
+        await this.transformShader.load();
+
+        this.sortShader = new WGSLShader(this.device, this.sortShaderPath);
+        await this.sortShader.load();
+
         this.rasterShader = new WGSLShader(this.device, this.rasterShaderPath);
         await this.rasterShader.load();
     }
@@ -97,6 +117,44 @@ export default class RasterSplatRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
 
+        // holds GUI-controlled render parameters
+        this.renderParamsBuffer = this.device.createBuffer({
+            label: "Render Params Buffer",
+            size: 8, // 2x f32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        this.updateRenderParams();
+
+        // buffer that holds the input splat data for the transform pass
+        this.transformInputBuffer = this.device.createBuffer({
+            label: "Transform Input Buffer",
+            size: BUFFER_MIN_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        // buffer that holds the transformed splat data from the transform pass
+        this.transformOutputBuffer = this.device.createBuffer({
+            label: "Transform Output Buffer",
+            size: BUFFER_MIN_SIZE,
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        // buffer that holds the transformed splat Z positions,
+        // used for depth sorting during the sort pass for faster memory access
+        this.transformOutputPosZBuffer = this.device.createBuffer({
+            label: "Transform Output PosZ Buffer",
+            size: BUFFER_MIN_SIZE,
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        this.sceneParamsBuffer = this.device.createBuffer({
+            label: "Scene Params Buffer",
+            size: 4, // 1x u32 for splat count
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        const sceneParams = new Uint32Array([this.splatCount]);
+        this.device.queue.writeBuffer(this.sceneParamsBuffer, 0, sceneParams.buffer);
+
         // canvas width and height
         // COPY_DST for canvas resize updates
         this.canvasParamsBuffer = this.device.createBuffer({
@@ -107,17 +165,64 @@ export default class RasterSplatRenderer {
         const canvasParams = new Uint32Array([this.canvas.width, this.canvas.height]);
         this.device.queue.writeBuffer(this.canvasParamsBuffer, 0, canvasParams.buffer);
 
-        // holds splat data
-        this.vertexBuffer = this.device.createBuffer({
-            label: "Vertex Buffer",
-            size: BUFFER_MIN_SIZE,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-
         this.depthTexture = this.device.createTexture({
             size: [this.canvas.width, this.canvas.height],
             format: 'depth24plus',
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+    }
+
+    createTransformPipeline() {
+        this.transformPipeline = this.device.createComputePipeline({
+            label: "Transform Pipeline",
+            layout: 'auto',
+            compute: {
+                module: this.transformShader.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.transformBindGroup0 = this.device.createBindGroup({
+            layout: this.transformPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.cameraBuffer } },
+                { binding: 1, resource: { buffer: this.canvasParamsBuffer } },
+                { binding: 2, resource: { buffer: this.renderParamsBuffer } }
+            ]
+        });
+
+        this.transformBindGroup1 = this.device.createBindGroup({
+            layout: this.transformPipeline.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.transformInputBuffer } },
+                { binding: 1, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 2, resource: { buffer: this.transformOutputPosZBuffer } }
+            ]
+        });
+    }
+
+    createSortPipeline() {
+        this.sortPipeline = this.device.createComputePipeline({
+            label: "Sort Pipeline",
+            layout: 'auto',
+            compute: {
+                module: this.sortShader.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.sortBindGroup0 = this.device.createBindGroup({
+            layout: this.sortPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.sceneParamsBuffer } },
+            ]
+        });
+
+        this.sortBindGroup1 = this.device.createBindGroup({
+            layout: this.sortPipeline.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+            ]
         });
     }
 
@@ -164,24 +269,32 @@ export default class RasterSplatRenderer {
         this.renderBindGroup0 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.cameraBuffer } },
-                { binding: 1, resource: { buffer: this.canvasParamsBuffer } },
+                { binding: 0, resource: { buffer: this.canvasParamsBuffer } },
             ],
         });
 
         this.renderBindGroup1 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.vertexBuffer } },
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
             ],
         });
     }
 
-    
     /* ===== ===== Event Handling ===== ===== */
 
     initializeEventListeners() {
         window.addEventListener('resize', () => this.onWindowResize(), false);
+
+        eventBus.on(EVENTS.SCALE_MULTIPLIER_CHANGE, value => {
+            this.scaleMultiplier = value;
+            this.updateRenderParams();
+        });
+
+        eventBus.on(EVENTS.SHOW_SFM_CHANGE, value => {
+            this.showSfMPoints = value ? 1.0 : 0.0;
+            this.updateRenderParams();
+        });
     }
 
     onWindowResize() {
@@ -206,7 +319,6 @@ export default class RasterSplatRenderer {
             });
         }
     }
-
     
     /* ===== ===== Mesh Management ===== ===== */
 
@@ -216,21 +328,40 @@ export default class RasterSplatRenderer {
 
         this.reallocateBuffers(splatCount);
 
-        this.device.queue.writeBuffer(this.vertexBuffer, 0, bufferData.buffer);
+        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
+
+        const sceneParams = new Uint32Array([this.splatCount]);
+        this.device.queue.writeBuffer(this.sceneParamsBuffer, 0, sceneParams.buffer);
     }
 
     reallocateBuffers(splatCount) {
-        if (this.vertexBuffer) this.vertexBuffer.destroy();
-        this.vertexBuffer = this.device.createBuffer({
-            label: "Vertex Buffer",
-            size: splatCount * this.FLOATS_PER_SPLAT3D * 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        if (this.transformInputBuffer) this.transformInputBuffer.destroy();
+        this.transformInputBuffer = this.device.createBuffer({
+            label: "Transform Input Buffer",
+            size: Math.max(BUFFER_MIN_SIZE, splatCount * this.FLOATS_PER_SPLAT3D * 4),
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
+        this.transformOutputBuffer = this.device.createBuffer({
+            label: "Transform Output Buffer",
+            size: Math.max(BUFFER_MIN_SIZE, splatCount * this.FLOATS_PER_SPLAT2D * 4),
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        });
+
+        this.transformBindGroup1 = this.device.createBindGroup({
+            layout: this.transformPipeline.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.transformInputBuffer } },
+                { binding: 1, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 2, resource: { buffer: this.transformOutputPosZBuffer } }
+            ]
         });
 
         this.renderBindGroup1 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.vertexBuffer } },
+                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
             ],
         });
     }
@@ -244,6 +375,19 @@ export default class RasterSplatRenderer {
 
         const commandEncoder = this.device.createCommandEncoder();
 
+        // Pass 1: Transform Compute Pass
+        {
+            const pass = commandEncoder.beginComputePass();
+            pass.setPipeline(this.transformPipeline);
+            pass.setBindGroup(0, this.transformBindGroup0);
+            pass.setBindGroup(1, this.transformBindGroup1);
+            const workgroupSize = 128;
+            const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+            pass.dispatchWorkgroups(numWorkgroups);
+            pass.end();
+        }
+
+        // Pass 3: Raster Render Pass
         {
             const pass = commandEncoder.beginRenderPass({
                 colorAttachments: [{
@@ -282,5 +426,10 @@ export default class RasterSplatRenderer {
         cameraData.set(this.camera.pvMatrix, 32);
 
         this.device.queue.writeBuffer(this.cameraBuffer, 0, cameraData.buffer);
+    }
+
+    updateRenderParams() {
+        const renderParams = new Float32Array([this.scaleMultiplier, this.showSfMPoints]);
+        this.device.queue.writeBuffer(this.renderParamsBuffer, 0, renderParams.buffer);
     }
 }

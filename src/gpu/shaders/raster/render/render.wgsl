@@ -1,25 +1,17 @@
-struct Camera {
-    vMatrix : mat4x4<f32>,
-    pMatrix : mat4x4<f32>,
-    pvMatrix : mat4x4<f32>,
-};
-
 struct CanvasParams {
     width : u32,
     height : u32,
 };
 
-struct Splat {
+struct Splat2D {
     pos : vec3<f32>,
-    cov1 : vec3<f32>,
-    cov2 : vec3<f32>,
+    cov : vec3<f32>,
     color : vec4<f32>,
 };
 
-@group(0) @binding(0) var<uniform> uCamera : Camera;
-@group(0) @binding(1) var<uniform> uCParams : CanvasParams;
+@group(0) @binding(0) var<uniform> uCParams : CanvasParams;
 
-@group(1) @binding(0) var<storage, read> inSplats : array<Splat>;
+@group(1) @binding(0) var<storage, read> inSplats : array<Splat2D>;
 
 struct VSOut {
     @builtin(position) pos : vec4<f32>,
@@ -47,47 +39,11 @@ fn vs_main(
     let splat = inSplats[splatIdx];
     let offsetDir = quadOffsetDirs[quadIdx];
 
-    let pvM4x4 = uCamera.pvMatrix;
+    let pos_ndc = splat.pos;
 
-    /* ===== position transform ===== */
-    let c = pvM4x4 * vec4<f32>(splat.pos, 1.0);
-    // perspective divide
-    let ndcPos = vec3<f32>(
-        c.x / c.w,
-        c.y / c.w,
-        c.z / c.w
-    );
-
-    /* ===== covariance transform ===== */
-    let cov = mat3x3<f32>(
-        splat.cov1.x, splat.cov1.y, splat.cov1.z,
-        splat.cov1.y, splat.cov2.x, splat.cov2.y,
-        splat.cov1.z, splat.cov2.y, splat.cov2.z
-    );
-    let w = max(c.w, 1e-6);
-    let inv_c_w2 = 1.0 / (w * w);
-
-    /* ===== J * cov * J^T (feelings) version ===== */
-    // Jacobian
-    // note that pvM4x4 is column-major
-    let JR0 = vec3<f32>(
-        (pvM4x4[0][0] * c.w - pvM4x4[0][3] * c.x) * inv_c_w2,
-        (pvM4x4[1][0] * c.w - pvM4x4[1][3] * c.x) * inv_c_w2,
-        (pvM4x4[2][0] * c.w - pvM4x4[2][3] * c.x) * inv_c_w2
-    );
-    let JR1 = vec3<f32>(
-        (pvM4x4[0][1] * c.w - pvM4x4[0][3] * c.y) * inv_c_w2,
-        (pvM4x4[1][1] * c.w - pvM4x4[1][3] * c.y) * inv_c_w2,
-        (pvM4x4[2][1] * c.w - pvM4x4[2][3] * c.y) * inv_c_w2
-    );
-
-    // transformed covariance = J * cov * J^T
-    let cov_JR0 = cov * JR0;
-    let cov_JR1 = cov * JR1;
-
-    let cxx_ndc = dot(JR0, cov_JR0);
-    let cxy_ndc = dot(JR0, cov_JR1);
-    let cyy_ndc = dot(JR1, cov_JR1);
+    let cxx_ndc = splat.cov.x;
+    let cxy_ndc = splat.cov.y;
+    let cyy_ndc = splat.cov.z;
 
     // pixel space covariance for bounding box calculation
     let sx = f32(uCParams.width) * 0.5;
@@ -106,12 +62,12 @@ fn vs_main(
     // 3 sigma max radius in pixel space
     let maxRadius_p = 3.0 * sqrt(max(lambda1, lambda2));
 
-    let X = ndcPos.x + offsetDir.x * maxRadius_p / sx;
-    let Y = ndcPos.y + offsetDir.y * maxRadius_p / sy;
+    let X = splat.pos.x + offsetDir.x * maxRadius_p / sx;
+    let Y = splat.pos.y + offsetDir.y * maxRadius_p / sy;
 
     return VSOut(
-        vec4<f32>(X * c.w, Y * c.w, c.z, c.w),
-        ndcPos,
+        vec4<f32>(X, Y, pos_ndc.z, 1.0),
+        pos_ndc,
         splat.color,
         vec3<f32>(cxx_ndc, cxy_ndc, cyy_ndc)
     );
