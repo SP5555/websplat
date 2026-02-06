@@ -48,7 +48,6 @@ fn vs_main(
     let offsetDir = quadOffsetDirs[quadIdx];
 
     let pvM4x4 = uCamera.pvMatrix;
-    let aspect = f32(uCParams.width) / f32(uCParams.height);
 
     /* ===== position transform ===== */
     let c = pvM4x4 * vec4<f32>(splat.pos, 1.0);
@@ -86,29 +85,36 @@ fn vs_main(
     let cov_JR0 = cov * JR0;
     let cov_JR1 = cov * JR1;
 
-    let cxx_p = dot(JR0, cov_JR0);
-    let cxy_p = dot(JR0, cov_JR1);
-    let cyy_p = dot(JR1, cov_JR1);
+    let cxx_ndc = dot(JR0, cov_JR0);
+    let cxy_ndc = dot(JR0, cov_JR1);
+    let cyy_ndc = dot(JR1, cov_JR1);
+
+    // pixel space covariance for bounding box calculation
+    let sx = f32(uCParams.width) * 0.5;
+    let sy = f32(uCParams.height) * 0.5;
+    let cxx_p = cxx_ndc * sx * sx;
+    let cxy_p = cxy_ndc * sx * sy;
+    let cyy_p = cyy_ndc * sy * sy;
 
     let trace = cxx_p + cyy_p;
     let det = cxx_p * cyy_p - cxy_p * cxy_p;
     
-    let temp = trace * trace - 4.0 * det;
+    let temp = max(trace * trace - 4.0 * det, 0.0);
     let lambda1 = 0.5 * (trace + sqrt(temp));
     let lambda2 = 0.5 * (trace - sqrt(temp));
 
-    // 3 sigma max radius in NDC space
-    let maxRadius = 3.0 * sqrt(max(lambda1, lambda2));
+    // 3 sigma max radius in pixel space
+    let maxRadius_p = 3.0 * sqrt(max(lambda1, lambda2));
 
-    let X = ndcPos.x + offsetDir.x * maxRadius / aspect;
-    let Y = ndcPos.y + offsetDir.y * maxRadius;
+    let X = ndcPos.x + offsetDir.x * maxRadius_p / sx;
+    let Y = ndcPos.y + offsetDir.y * maxRadius_p / sy;
 
-    var output : VSOut;
-    output.pos = vec4<f32>(X * c.w, Y * c.w, c.z, c.w);
-    output.splatPos = ndcPos;
-    output.color = splat.color;
-    output.cov = vec3<f32>(cxx_p, cxy_p, cyy_p);
-    return output;
+    return VSOut(
+        vec4<f32>(X * c.w, Y * c.w, c.z, c.w),
+        ndcPos,
+        splat.color,
+        vec3<f32>(cxx_ndc, cxy_ndc, cyy_ndc)
+    );
 }
 
 @fragment
