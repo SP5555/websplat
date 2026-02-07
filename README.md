@@ -4,6 +4,7 @@ A fun little 3DGS scene renderer implemented in WebGPU!
 
 ## TODO
 - [ ] Optimizations, ofc.
+- [ ] Try sorting the splats in Raster Renderer and see what happens.
 - [X] Bitonic Sort
 - [X] Separate NDC Z values into another buffer for faster sort pass? I guess.
 - [X] Nothing
