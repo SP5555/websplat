@@ -15,9 +15,12 @@ export default class RasterSplatRenderer {
     constructor(input) {
         this.input = input;
 
-        this.transformShaderPath  = './src/gpu/shaders/raster/transform/transform.wgsl';
-        this.sortShaderPath       = './src/gpu/shaders/raster/sort/sort.wgsl';
-        this.rasterShaderPath     = './src/gpu/shaders/raster/render/render.wgsl';
+        this.transformShaderPath = './src/gpu/shaders/raster/transform/transform.wgsl';
+        this.sortShader0Path     = './src/gpu/shaders/raster/sort/sort-radix-count.wgsl';
+        this.sortShader1Path     = './src/gpu/shaders/raster/sort/sort-radix-scan.wgsl';
+        this.sortShader2Path     = './src/gpu/shaders/raster/sort/sort-radix-scatter.wgsl';
+        this.sortShader3Path     = './src/gpu/shaders/raster/sort/sort-radix-copy.wgsl';
+        this.rasterShaderPath    = './src/gpu/shaders/raster/render/render.wgsl';
 
         /* ===== Private Zone ===== */
         this.canvas = document.getElementById('canvas00');
@@ -35,7 +38,10 @@ export default class RasterSplatRenderer {
 
         /* ===== Pipelines ===== */
         this.transformPipeline = null;
-        this.sortPipeline = null;
+        this.sortPipeline0 = null;
+        this.sortPipeline1 = null;
+        this.sortPipeline2 = null;
+        this.sortPipeline3 = null;
         this.renderPipeline = null;
         
         this.isPipelineInitialized = false;
@@ -102,8 +108,17 @@ export default class RasterSplatRenderer {
         this.transformShader = new WGSLShader(this.device, this.transformShaderPath);
         await this.transformShader.load();
 
-        this.sortShader = new WGSLShader(this.device, this.sortShaderPath);
-        await this.sortShader.load();
+        this.sortShader0 = new WGSLShader(this.device, this.sortShader0Path);
+        await this.sortShader0.load();
+
+        this.sortShader1 = new WGSLShader(this.device, this.sortShader1Path);
+        await this.sortShader1.load();
+
+        this.sortShader2 = new WGSLShader(this.device, this.sortShader2Path);
+        await this.sortShader2.load();
+
+        this.sortShader3 = new WGSLShader(this.device, this.sortShader3Path);
+        await this.sortShader3.load();
 
         this.rasterShader = new WGSLShader(this.device, this.rasterShaderPath);
         await this.rasterShader.load();
@@ -125,27 +140,63 @@ export default class RasterSplatRenderer {
         });
         this.updateRenderParams();
 
-        // buffer that holds the input splat data for the transform pass
-        this.transformInputBuffer = this.device.createBuffer({
-            label: "Transform Input Buffer",
+        // buffer that holds the input splat 3D data for the transform pass
+        this.splat3DBuffer = this.device.createBuffer({
+            label: "Splat 3D Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
-        // buffer that holds the transformed splat data from the transform pass
-        this.transformOutputBuffer = this.device.createBuffer({
-            label: "Transform Output Buffer",
+        // buffer that holds the transformed splat 2D data from the transform pass
+        this.splat2DBuffer = this.device.createBuffer({
+            label: "Splat 2D Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
-        // buffer that holds the transformed splat Z positions,
-        // used for depth sorting during the sort pass for faster memory access
-        this.transformOutputPosZBuffer = this.device.createBuffer({
+        // buffer that holds key values for depth sorting
+        this.depthKeyBuffer = this.device.createBuffer({
             label: "Transform Output PosZ Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
+
+        /* ===== Radix Sort Buffers ===== */
+        this.sortOutSplat2DBuffer = this.device.createBuffer({
+            label: "Sort Out Splat 2D Buffer",
+            size: BUFFER_MIN_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        this.radixParamsBuffer = this.device.createBuffer({
+            label: "Radix Params Buffer",
+            size: 4, // 1x u32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        // buffer for radix sort counters
+        // each workgroup has 256 u32 local counters
+        this.radixLocalCounterBuffer = this.device.createBuffer({
+            label: "Radix Counter Buffer",
+            size: BUFFER_MIN_SIZE,
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        // 256 counters of u32 for 8 bits field
+        this.radixGlobalCounterBuffer = this.device.createBuffer({
+            label: "Radix Global Counter Buffer",
+            size: 256 * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        });
+
+        // this tracks the buckets the elements belong to
+        // used in scan pass to determine local bucket offsets
+        this.radixBucketFlagBuffer = this.device.createBuffer({
+            label: "Radix Bucket Flag Buffer",
+            size: BUFFER_MIN_SIZE,
+            usage: GPUBufferUsage.STORAGE
+        });
+        /* ===== ===== ===== ===== */
 
         this.sceneParamsBuffer = this.device.createBuffer({
             label: "Scene Params Buffer",
@@ -194,34 +245,106 @@ export default class RasterSplatRenderer {
         this.transformBindGroup1 = this.device.createBindGroup({
             layout: this.transformPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformInputBuffer } },
-                { binding: 1, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 2, resource: { buffer: this.transformOutputPosZBuffer } }
+                { binding: 0, resource: { buffer: this.splat3DBuffer } },
+                { binding: 1, resource: { buffer: this.splat2DBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeyBuffer } }
             ]
         });
     }
 
     createSortPipeline() {
-        this.sortPipeline = this.device.createComputePipeline({
-            label: "Sort Pipeline",
+        this.sortPipelineCount = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Count",
             layout: 'auto',
             compute: {
-                module: this.sortShader.getModule(),
+                module: this.sortShader0.getModule(),
                 entryPoint: 'cs_main'
             }
         });
 
-        this.sortBindGroup0 = this.device.createBindGroup({
-            layout: this.sortPipeline.getBindGroupLayout(0),
+        this.sortPipelineScan = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Global Counter Scan",
+            layout: 'auto',
+            compute: {
+                module: this.sortShader1.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.sortPipelineScatter = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Scatter",
+            layout: 'auto',
+            compute: {
+                module: this.sortShader2.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.sortPipelineCopy = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Copy",
+            layout: 'auto',
+            compute: {
+                module: this.sortShader3.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.sortBindGroupCount0 = this.device.createBindGroup({
+            layout: this.sortPipelineCount.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.sceneParamsBuffer } },
+                { binding: 1, resource: { buffer: this.radixParamsBuffer } }
+            ]
+        });
+
+        this.sortBindGroupCount1 = this.device.createBindGroup({
+            layout: this.sortPipelineCount.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.depthKeyBuffer } },
+                { binding: 1, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 2, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 3, resource: { buffer: this.radixBucketFlagBuffer } }
+            ]
+        });
+
+        this.sortBindGroupScan1 = this.device.createBindGroup({
+            layout: this.sortPipelineScan.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.radixGlobalCounterBuffer } },
+            ]
+        });
+
+        this.sortBindGroupScatter0 = this.device.createBindGroup({
+            layout: this.sortPipelineScatter.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.sceneParamsBuffer } }
+            ]
+        });
+
+        this.sortBindGroupScatter1 = this.device.createBindGroup({
+            layout: this.sortPipelineScatter.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.splat2DBuffer } },
+                { binding: 1, resource: { buffer: this.sortOutSplat2DBuffer } },
+                { binding: 2, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 3, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 4, resource: { buffer: this.radixBucketFlagBuffer } }
+            ]
+        });
+
+        this.sortBindGroupCopy0 = this.device.createBindGroup({
+            layout: this.sortPipelineCopy.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.sceneParamsBuffer } },
             ]
         });
 
-        this.sortBindGroup1 = this.device.createBindGroup({
-            layout: this.sortPipeline.getBindGroupLayout(1),
+        this.sortBindGroupCopy1 = this.device.createBindGroup({
+            layout: this.sortPipelineCopy.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.splat2DBuffer } },
+                { binding: 1, resource: { buffer: this.sortOutSplat2DBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeyBuffer } }
             ]
         });
     }
@@ -276,7 +399,7 @@ export default class RasterSplatRenderer {
         this.renderBindGroup1 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.splat2DBuffer } },
             ],
         });
     }
@@ -328,40 +451,93 @@ export default class RasterSplatRenderer {
 
         this.reallocateBuffers(splatCount);
 
-        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
+        this.device.queue.writeBuffer(this.splat3DBuffer, 0, bufferData.buffer);
 
         const sceneParams = new Uint32Array([this.splatCount]);
         this.device.queue.writeBuffer(this.sceneParamsBuffer, 0, sceneParams.buffer);
     }
 
     reallocateBuffers(splatCount) {
-        if (this.transformInputBuffer) this.transformInputBuffer.destroy();
-        this.transformInputBuffer = this.device.createBuffer({
-            label: "Transform Input Buffer",
+        if (this.splat3DBuffer) this.splat3DBuffer.destroy();
+        this.splat3DBuffer = this.device.createBuffer({
+            label: "Splat 3D Buffer",
             size: Math.max(BUFFER_MIN_SIZE, splatCount * this.FLOATS_PER_SPLAT3D * 4),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
-        if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
-        this.transformOutputBuffer = this.device.createBuffer({
-            label: "Transform Output Buffer",
+        if (this.splat2DBuffer) this.splat2DBuffer.destroy();
+        this.splat2DBuffer = this.device.createBuffer({
+            label: "Splat 2D Buffer",
             size: Math.max(BUFFER_MIN_SIZE, splatCount * this.FLOATS_PER_SPLAT2D * 4),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        });
+
+        if (this.sortOutSplat2DBuffer) this.sortOutSplat2DBuffer.destroy();
+        this.sortOutSplat2DBuffer = this.device.createBuffer({
+            label: "Sort Out Splat 2D Buffer",
+            size: Math.max(BUFFER_MIN_SIZE, splatCount * this.FLOATS_PER_SPLAT2D * 4),
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        const RADIX_THREADS_PER_WORKGROUP = 256; // must match sort-radix.wgsl
+        if (this.radixLocalCounterBuffer) this.radixLocalCounterBuffer.destroy();
+        if (this.radixBucketFlagBuffer) this.radixBucketFlagBuffer.destroy();
+        this.radixLocalCounterBuffer = this.device.createBuffer({
+            label: "Radix Local Counter Buffer",
+            // each workgroup has 256 u32 local counters
+            size: Math.ceil(splatCount / RADIX_THREADS_PER_WORKGROUP) * 256 * 4,
+            usage: GPUBufferUsage.STORAGE
+        });
+        this.radixBucketFlagBuffer = this.device.createBuffer({
+            label: "Radix Bucket Flag Buffer",
+            // each splat belongs to one radix bucket indicated by a u32 value
+            size: splatCount * 4,
+            usage: GPUBufferUsage.STORAGE
         });
 
         this.transformBindGroup1 = this.device.createBindGroup({
             layout: this.transformPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformInputBuffer } },
-                { binding: 1, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 2, resource: { buffer: this.transformOutputPosZBuffer } }
+                { binding: 0, resource: { buffer: this.splat3DBuffer } },
+                { binding: 1, resource: { buffer: this.splat2DBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeyBuffer } }
+            ]
+        });
+
+        this.sortBindGroupCount1 = this.device.createBindGroup({
+            layout: this.sortPipelineCount.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.depthKeyBuffer } },
+                { binding: 1, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 2, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 3, resource: { buffer: this.radixBucketFlagBuffer } }
+            ]
+        });
+
+        this.sortBindGroupScatter1 = this.device.createBindGroup({
+            layout: this.sortPipelineScatter.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.splat2DBuffer } },
+                { binding: 1, resource: { buffer: this.sortOutSplat2DBuffer } },
+                { binding: 2, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 3, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 4, resource: { buffer: this.radixBucketFlagBuffer } }
+            ]
+        });
+
+        this.sortBindGroupCopy1 = this.device.createBindGroup({
+            layout: this.sortPipelineCopy.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.splat2DBuffer } },
+                { binding: 1, resource: { buffer: this.sortOutSplat2DBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeyBuffer } }
             ]
         });
 
         this.renderBindGroup1 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.splat2DBuffer } },
             ],
         });
     }
@@ -385,6 +561,51 @@ export default class RasterSplatRenderer {
             const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
             pass.dispatchWorkgroups(numWorkgroups);
             pass.end();
+        }
+
+        // Pass 2: Radix Sort Compute Pass
+        {
+            for (let offset = 16; offset >= 0; offset -= 8) {
+                const RadixParams = new Uint32Array([offset]);
+                this.device.queue.writeBuffer(this.radixParamsBuffer, 0, RadixParams);
+                {
+                    const pass = commandEncoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineCount);
+                    pass.setBindGroup(0, this.sortBindGroupCount0);
+                    pass.setBindGroup(1, this.sortBindGroupCount1);
+                    const workgroupSize = 256;
+                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    pass.dispatchWorkgroups(numWorkgroups);
+                    pass.end();
+                }
+                {
+                    const pass = commandEncoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineScan);
+                    pass.setBindGroup(1, this.sortBindGroupScan1);
+                    pass.dispatchWorkgroups(1);
+                    pass.end();
+                }
+                {
+                    const pass = commandEncoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineScatter);
+                    pass.setBindGroup(0, this.sortBindGroupScatter0);
+                    pass.setBindGroup(1, this.sortBindGroupScatter1);
+                    const workgroupSize = 256;
+                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    pass.dispatchWorkgroups(numWorkgroups);
+                    pass.end();
+                }
+                {
+                    const pass = commandEncoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineCopy);
+                    pass.setBindGroup(0, this.sortBindGroupCopy0);
+                    pass.setBindGroup(1, this.sortBindGroupCopy1);
+                    const workgroupSize = 256;
+                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    pass.dispatchWorkgroups(numWorkgroups);
+                    pass.end();
+                }
+            }
         }
 
         // Pass 3: Raster Render Pass

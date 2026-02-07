@@ -48,7 +48,7 @@ struct Splat2D {
 
 @group(1) @binding(0) var<storage, read> inSplats : array<Splat3D>;
 @group(1) @binding(1) var<storage, read_write> outSplats : array<Splat2D>;
-@group(1) @binding(2) var<storage, read_write> outSplatsZ : array<f32>;
+@group(1) @binding(2) var<storage, read_write> depthKeys : array<u32>;
 
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
@@ -124,5 +124,5 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         color
     );
 
-    outSplatsZ[i] = transformedPos.z;
+    depthKeys[i] = bitcast<u32>(transformedPos.z);
 }

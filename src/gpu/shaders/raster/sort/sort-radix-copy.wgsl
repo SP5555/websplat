@@ -1,0 +1,43 @@
+/* !!! DO NOT CHANGE this value !!! */
+const THREADS_PER_WORKGROUP = 256u;
+
+struct SceneParams {
+    splatCount : u32,
+}
+
+struct Splat2D {
+    pos : vec3<f32>,
+    cov : vec3<f32>,
+    color : vec4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> uSceneParams : SceneParams;
+
+@group(1) @binding(0) var<storage, read_write> inSplats : array<Splat2D>;
+@group(1) @binding(1) var<storage, read> outSplats : array<Splat2D>;
+@group(1) @binding(2) var<storage, read_write> depthKeys : array<u32>;
+
+// copy outSplats to inSplats
+@compute @workgroup_size(THREADS_PER_WORKGROUP)
+fn cs_main(
+    @builtin(global_invocation_id) global_id : vec3<u32>
+) {
+    let index = global_id.x;
+
+    // debug
+    if (index == 0u) {
+        inSplats[index] = Splat2D(
+            vec3<f32>(0.0, 0.0, -0.99),
+            vec3<f32>(1e-4, 0.0, 1e-4),
+            vec4<f32>(1.0, 0.0, 1.0, 1.0)
+        );
+    }
+
+    if (index < uSceneParams.splatCount) {
+        let splat =  outSplats[index];
+        inSplats[index] = splat;
+
+        // update depth key
+        depthKeys[index] = bitcast<u32>(splat.pos.z);
+    }
+}
