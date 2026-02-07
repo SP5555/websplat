@@ -17,6 +17,14 @@ struct Splat2D {
 @group(1) @binding(1) var<storage, read> outSplats : array<Splat2D>;
 @group(1) @binding(2) var<storage, read_write> depthKeys : array<u32>;
 
+fn f32_to_sortable_u32(x: f32) -> u32 {
+    let b = bitcast<u32>(x);
+
+    // positive floats: flip sign bit
+    // negative floats: invert all bits
+    return select(~b, b ^ 0x80000000u, (b >> 31u) == 0u);
+}
+
 // copy outSplats to inSplats
 @compute @workgroup_size(THREADS_PER_WORKGROUP)
 fn cs_main(
@@ -24,20 +32,11 @@ fn cs_main(
 ) {
     let index = global_id.x;
 
-    // debug
-    if (index == 0u) {
-        inSplats[index] = Splat2D(
-            vec3<f32>(0.0, 0.0, -0.99),
-            vec3<f32>(1e-4, 0.0, 1e-4),
-            vec4<f32>(1.0, 0.0, 1.0, 1.0)
-        );
-    }
-
     if (index < uSceneParams.splatCount) {
         let splat =  outSplats[index];
         inSplats[index] = splat;
 
         // update depth key
-        depthKeys[index] = bitcast<u32>(splat.pos.z);
+        depthKeys[index] = f32_to_sortable_u32(splat.pos.z);
     }
 }

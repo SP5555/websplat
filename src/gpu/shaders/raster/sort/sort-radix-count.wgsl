@@ -6,7 +6,7 @@ struct SceneParams {
 }
 
 struct RadixParams {
-    // 24, 16, 8, 0 for 4 radix sort passes
+    // 0, 8, 16, 24 for 4 radix sort passes
     bitOffset : u32,
 }
 

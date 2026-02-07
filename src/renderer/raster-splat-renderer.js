@@ -8,8 +8,21 @@ import { eventBus } from "../utils/event-emitters.js";
 
 const BUFFER_MIN_SIZE = 80; // bytes
 
-/* Can't handle Z-depth correctly yet */
-/* maybe even impossible without hacks? */
+// +---------------------------------+
+// |          REST IN PEACE          |
+// |         Raster Renderer         |
+// |           2026 - 2026           |
+// |                                 |
+// |  Tried to sort splats before    |
+// |  rasterization to fix alpha     |
+// |  blending. Turns out GPUs are   |
+// |  too chaotic for that plan.     |
+// +---------------------------------+
+//
+// Let this serve as a reminder: globally sorted primitives
+// can't achieve correct alpha blending in pure rasterization.
+// This raster renderer may be gone, but it left behind a
+// perfect radix sort capable of sorting splats like a boss!
 
 export default class RasterSplatRenderer {
     constructor(input) {
@@ -495,6 +508,13 @@ export default class RasterSplatRenderer {
             usage: GPUBufferUsage.STORAGE
         });
 
+        if (this.depthKeyBuffer) this.depthKeyBuffer.destroy();
+        this.depthKeyBuffer = this.device.createBuffer({
+            label: "Depth Keys Buffer",
+            size: Math.max(BUFFER_MIN_SIZE, splatCount * 4),
+            usage: GPUBufferUsage.STORAGE
+        });
+
         this.transformBindGroup1 = this.device.createBindGroup({
             layout: this.transformPipeline.getBindGroupLayout(1),
             entries: [
@@ -565,7 +585,7 @@ export default class RasterSplatRenderer {
 
         // Pass 2: Radix Sort Compute Pass
         {
-            for (let offset = 16; offset >= 0; offset -= 8) {
+            for (let offset = 0; offset < 32; offset += 8) {
                 const RadixParams = new Uint32Array([offset]);
                 this.device.queue.writeBuffer(this.radixParamsBuffer, 0, RadixParams);
                 {
