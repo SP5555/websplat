@@ -48,7 +48,15 @@ struct Splat2D {
 
 @group(1) @binding(0) var<storage, read> inSplats : array<Splat3D>;
 @group(1) @binding(1) var<storage, read_write> outSplats : array<Splat2D>;
-@group(1) @binding(2) var<storage, read_write> outSplatsZ : array<f32>;
+@group(1) @binding(2) var<storage, read_write> depthKeys : array<u32>;
+
+fn f32_to_sortable_u32(x: f32) -> u32 {
+    let b = bitcast<u32>(x);
+
+    // positive floats: flip sign bit
+    // negative floats: invert all bits
+    return select(~b, b ^ 0x80000000u, (b >> 31u) == 0u);
+}
 
 @compute @workgroup_size(128)
 fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
@@ -201,5 +209,5 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
         color
     );
 
-    outSplatsZ[i] = transformedPos.z;
+    depthKeys[i] = f32_to_sortable_u32(transformedPos.z);
 }

@@ -17,9 +17,12 @@ struct GlobalParams {
 
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 
-@group(1) @binding(0) var<storage, read> inSplatsZ : array<f32>;
+@group(1) @binding(0) var<storage, read> depthKeys : array<u32>;
 @group(1) @binding(1) var<storage, read_write> inOutTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
+
+const SENTINEL_IDX = 0xFFFFFFFFu;
+const SENTINEL_KEY = 0xFFFFFFFFu;
 
 fn next_pow2(v: u32) -> u32 {
     if (v <= 1u) {
@@ -32,12 +35,12 @@ fn compare_and_swap(leftIdx: u32, rightIdx: u32) {
     let leftSplatIdx  = inOutTileIndices[leftIdx];
     let rightSplatIdx = inOutTileIndices[rightIdx];
 
-    if (leftSplatIdx == 0xFFFFFFFFu && rightSplatIdx == 0xFFFFFFFFu) {
+    if (leftSplatIdx == SENTINEL_IDX && rightSplatIdx == SENTINEL_IDX) {
         return; // both sentinels
     }
 
-    let leftZ  = select(1.0, inSplatsZ[leftSplatIdx], leftSplatIdx != 0xFFFFFFFF);
-    let rightZ = select(1.0, inSplatsZ[rightSplatIdx], rightSplatIdx != 0xFFFFFFFF);
+    let leftZ  = select(SENTINEL_KEY, depthKeys[leftSplatIdx], leftSplatIdx != SENTINEL_IDX);
+    let rightZ = select(SENTINEL_KEY, depthKeys[rightSplatIdx], rightSplatIdx != SENTINEL_IDX);
 
     if (leftZ > rightZ) {
         inOutTileIndices[leftIdx]  = rightSplatIdx;
