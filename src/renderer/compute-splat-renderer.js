@@ -142,23 +142,23 @@ export default class ComputeSplatRenderer {
         this.updateRenderParams();
 
         // buffer that holds the input splat data for the transform pass
-        this.transformInputBuffer = this.device.createBuffer({
-            label: "Transform Input Buffer",
+        this.spat3DBuffer = this.device.createBuffer({
+            label: "Splat 3D Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         // buffer that holds the transformed splat data from the transform pass
-        this.transformOutputBuffer = this.device.createBuffer({
-            label: "Transform Output Buffer",
+        this.spat2DBuffer = this.device.createBuffer({
+            label: "Splat 2D Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
         // buffer that holds the transformed splat Z positions,
         // used for depth sorting during the sort pass for faster memory access
-        this.transformOutputPosZBuffer = this.device.createBuffer({
-            label: "Transform Output PosZ Buffer",
+        this.depthKeysBuffer = this.device.createBuffer({
+            label: "Depth Keys Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
@@ -246,9 +246,9 @@ export default class ComputeSplatRenderer {
         this.transformBindGroup1 = this.device.createBindGroup({
             layout: this.transformPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformInputBuffer } },
-                { binding: 1, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 2, resource: { buffer: this.transformOutputPosZBuffer } }
+                { binding: 0, resource: { buffer: this.spat3DBuffer } },
+                { binding: 1, resource: { buffer: this.spat2DBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeysBuffer } }
             ]
         });
     }
@@ -274,7 +274,7 @@ export default class ComputeSplatRenderer {
         this.tileBindGroup1 = this.device.createBindGroup({
             layout: this.tilePipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.spat2DBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } }
             ]
@@ -301,7 +301,7 @@ export default class ComputeSplatRenderer {
         this.sortBindGroup1 = this.device.createBindGroup({
             layout: this.sortPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputPosZBuffer } },
+                { binding: 0, resource: { buffer: this.depthKeysBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } }
             ]
@@ -336,7 +336,7 @@ export default class ComputeSplatRenderer {
         this.renderBindGroup1 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.spat2DBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } }
             ]
@@ -384,7 +384,7 @@ export default class ComputeSplatRenderer {
 
         this.reallocateBuffers(splatCount);
 
-        this.device.queue.writeBuffer(this.transformInputBuffer, 0, bufferData.buffer);
+        this.device.queue.writeBuffer(this.spat3DBuffer, 0, bufferData.buffer);
 
         const globalParams = new Uint32Array([
             splatCount,
@@ -396,23 +396,23 @@ export default class ComputeSplatRenderer {
     }
 
     reallocateBuffers(splatCount) {
-        if (this.transformInputBuffer) this.transformInputBuffer.destroy();
-        this.transformInputBuffer = this.device.createBuffer({
-            label: "Transform Input Buffer",
+        if (this.spat3DBuffer) this.spat3DBuffer.destroy();
+        this.spat3DBuffer = this.device.createBuffer({
+            label: "Splat 3D Buffer",
             size: splatCount * this.FLOATS_PER_SPLAT3D * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
-        if (this.transformOutputBuffer) this.transformOutputBuffer.destroy();
-        this.transformOutputBuffer = this.device.createBuffer({
-            label: "Transform Output Buffer",
+        if (this.spat2DBuffer) this.spat2DBuffer.destroy();
+        this.spat2DBuffer = this.device.createBuffer({
+            label: "Splat 2D Buffer",
             size: splatCount * this.FLOATS_PER_SPLAT2D * 4,
             usage: GPUBufferUsage.STORAGE
         });
 
-        if (this.transformOutputPosZBuffer) this.transformOutputPosZBuffer.destroy();
-        this.transformOutputPosZBuffer = this.device.createBuffer({
-            label: "Transform Output PosZ Buffer",
+        if (this.depthKeysBuffer) this.depthKeysBuffer.destroy();
+        this.depthKeysBuffer = this.device.createBuffer({
+            label: "Depth Keys Buffer",
             size: splatCount * 4, // 1x f32 per splat
             usage: GPUBufferUsage.STORAGE
         });
@@ -435,16 +435,16 @@ export default class ComputeSplatRenderer {
         this.transformBindGroup1 = this.device.createBindGroup({
             layout: this.transformPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformInputBuffer } },
-                { binding: 1, resource: { buffer: this.transformOutputBuffer } },
-                { binding: 2, resource: { buffer: this.transformOutputPosZBuffer } }
+                { binding: 0, resource: { buffer: this.spat3DBuffer } },
+                { binding: 1, resource: { buffer: this.spat2DBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeysBuffer } }
             ]
         });
 
         this.tileBindGroup1 = this.device.createBindGroup({
             layout: this.tilePipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.spat2DBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } }
             ]
@@ -453,7 +453,7 @@ export default class ComputeSplatRenderer {
         this.sortBindGroup1 = this.device.createBindGroup({
             layout: this.sortPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputPosZBuffer } },
+                { binding: 0, resource: { buffer: this.depthKeysBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } }
             ]
@@ -462,7 +462,7 @@ export default class ComputeSplatRenderer {
         this.renderBindGroup1 = this.device.createBindGroup({
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.transformOutputBuffer } },
+                { binding: 0, resource: { buffer: this.spat2DBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
                 { binding: 2, resource: { buffer: this.tileCountersBuffer } }
             ]

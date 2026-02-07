@@ -156,7 +156,7 @@ export default class RasterSplatRenderer {
 
         // buffer that holds key values for depth sorting
         this.depthKeyBuffer = this.device.createBuffer({
-            label: "Transform Output PosZ Buffer",
+            label: "Depth Keys Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
