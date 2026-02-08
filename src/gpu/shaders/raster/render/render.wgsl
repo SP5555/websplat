@@ -108,9 +108,8 @@ fn fs_main(
     // Mahalanobis distance squared
     let dist2 = dx * dx * invCxx + 2.0 * dx * dy * invCxy + dy * dy * invCyy;
 
-    // return vec4<f32>(1.0, 1.0, 1.0, 0.04);
-
     if (dist2 > 9.0) { // 3 sigma
+        // return vec4<f32>(1.0, 1.0, 1.0, 0.04);
         discard;
     }
 
