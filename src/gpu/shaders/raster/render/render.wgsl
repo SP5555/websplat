@@ -41,6 +41,16 @@ fn vs_main(
 
     let pos_ndc = splat.pos;
 
+    if (abs(pos_ndc.x) >= 1.0 || abs(pos_ndc.y) >= 1.0) {
+        // can't discard so keep it off-screen
+        return VSOut(
+            vec4<f32>(2.0, 2.0, 0.0, 1.0),
+            vec3<f32>(0.0),
+            vec4<f32>(0.0),
+            vec3<f32>(0.0)
+        );
+    }
+
     let cxx_ndc = splat.cov.x;
     let cxy_ndc = splat.cov.y;
     let cyy_ndc = splat.cov.z;
@@ -65,11 +75,6 @@ fn vs_main(
     let X = splat.pos.x + offsetDir.x * maxRadius_p / sx;
     let Y = splat.pos.y + offsetDir.y * maxRadius_p / sy;
     var Z = pos_ndc.z;
-    // if (pos_ndc.z < 0.0 || pos_ndc.z > 1.0) {
-    //     Z = 1.0;
-    // } else {
-    //     Z = pos_ndc.z;
-    // }
 
     return VSOut(
         vec4<f32>(X, Y, Z, 1.0),
