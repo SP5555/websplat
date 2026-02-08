@@ -20,6 +20,7 @@ export default class RasterSplatRenderer {
         this.input = input;
 
         this.transformShaderPath = './src/gpu/shaders/raster/transform/transform.wgsl';
+        this.sortShaderResetPath = './src/gpu/shaders/raster/sort/sort-radix-reset-counters.wgsl';
         this.sortShader0Path     = './src/gpu/shaders/raster/sort/sort-radix-count.wgsl';
         this.sortShader1Path     = './src/gpu/shaders/raster/sort/sort-radix-scan.wgsl';
         this.sortShader2Path     = './src/gpu/shaders/raster/sort/sort-radix-scatter.wgsl';
@@ -42,6 +43,7 @@ export default class RasterSplatRenderer {
 
         /* ===== Pipelines ===== */
         this.transformPipeline = null;
+        this.sortPipelineReset = null;
         this.sortPipeline0 = null;
         this.sortPipeline1 = null;
         this.sortPipeline2 = null;
@@ -111,6 +113,9 @@ export default class RasterSplatRenderer {
     async initShaders() {
         this.transformShader = new WGSLShader(this.device, this.transformShaderPath);
         await this.transformShader.load();
+
+        this.sortShaderReset = new WGSLShader(this.device, this.sortShaderResetPath);
+        await this.sortShaderReset.load();
 
         this.sortShader0 = new WGSLShader(this.device, this.sortShader0Path);
         await this.sortShader0.load();
@@ -257,6 +262,15 @@ export default class RasterSplatRenderer {
     }
 
     createSortPipeline() {
+        this.sortPipelineReset = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Reset Counters",
+            layout: 'auto',
+            compute: {
+                module: this.sortShaderReset.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
         this.sortPipelineCount = this.device.createComputePipeline({
             label: "Sort Pipeline: Radix Count",
             layout: 'auto',
@@ -291,6 +305,13 @@ export default class RasterSplatRenderer {
                 module: this.sortShader3.getModule(),
                 entryPoint: 'cs_main'
             }
+        });
+
+        this.sortBindGroupReset1 = this.device.createBindGroup({
+            layout: this.sortPipelineReset.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.radixGlobalCounterBuffer } },
+            ]
         });
 
         this.sortBindGroupCount0 = this.device.createBindGroup({
@@ -388,7 +409,7 @@ export default class RasterSplatRenderer {
             },
             depthStencil: {
                 format: 'depth24plus',
-                depthWriteEnabled: false,
+                depthWriteEnabled: true,
                 depthCompare: 'less',
             },
         });
@@ -575,49 +596,56 @@ export default class RasterSplatRenderer {
         }
 
         // Pass 2: Radix Sort Compute Pass
-        {
-            for (let offset = 0; offset < 32; offset += 8) {
-                const RadixParams = new Uint32Array([offset]);
-                this.device.queue.writeBuffer(this.radixParamsBuffer, 0, RadixParams);
-                {
-                    const pass = commandEncoder.beginComputePass();
-                    pass.setPipeline(this.sortPipelineCount);
-                    pass.setBindGroup(0, this.sortBindGroupCount0);
-                    pass.setBindGroup(1, this.sortBindGroupCount1);
-                    const workgroupSize = 256;
-                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
-                    pass.dispatchWorkgroups(numWorkgroups);
-                    pass.end();
-                }
-                {
-                    const pass = commandEncoder.beginComputePass();
-                    pass.setPipeline(this.sortPipelineScan);
-                    pass.setBindGroup(1, this.sortBindGroupScan1);
-                    pass.dispatchWorkgroups(1);
-                    pass.end();
-                }
-                {
-                    const pass = commandEncoder.beginComputePass();
-                    pass.setPipeline(this.sortPipelineScatter);
-                    pass.setBindGroup(0, this.sortBindGroupScatter0);
-                    pass.setBindGroup(1, this.sortBindGroupScatter1);
-                    const workgroupSize = 256;
-                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
-                    pass.dispatchWorkgroups(numWorkgroups);
-                    pass.end();
-                }
-                {
-                    const pass = commandEncoder.beginComputePass();
-                    pass.setPipeline(this.sortPipelineCopy);
-                    pass.setBindGroup(0, this.sortBindGroupCopy0);
-                    pass.setBindGroup(1, this.sortBindGroupCopy1);
-                    const workgroupSize = 256;
-                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
-                    pass.dispatchWorkgroups(numWorkgroups);
-                    pass.end();
-                }
-            }
-        }
+        // {
+        //     for (let offset = 0; offset < 32; offset += 8) {
+        //         const RadixParams = new Uint32Array([offset]);
+        //         this.device.queue.writeBuffer(this.radixParamsBuffer, 0, RadixParams);
+        //         {
+        //             const pass = commandEncoder.beginComputePass();
+        //             pass.setPipeline(this.sortPipelineReset);
+        //             pass.setBindGroup(1, this.sortBindGroupReset1);
+        //             pass.dispatchWorkgroups(1);
+        //             pass.end();
+        //         }
+        //         {
+        //             const pass = commandEncoder.beginComputePass();
+        //             pass.setPipeline(this.sortPipelineCount);
+        //             pass.setBindGroup(0, this.sortBindGroupCount0);
+        //             pass.setBindGroup(1, this.sortBindGroupCount1);
+        //             const workgroupSize = 256;
+        //             const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+        //             pass.dispatchWorkgroups(numWorkgroups);
+        //             pass.end();
+        //         }
+        //         {
+        //             const pass = commandEncoder.beginComputePass();
+        //             pass.setPipeline(this.sortPipelineScan);
+        //             pass.setBindGroup(1, this.sortBindGroupScan1);
+        //             pass.dispatchWorkgroups(1);
+        //             pass.end();
+        //         }
+        //         {
+        //             const pass = commandEncoder.beginComputePass();
+        //             pass.setPipeline(this.sortPipelineScatter);
+        //             pass.setBindGroup(0, this.sortBindGroupScatter0);
+        //             pass.setBindGroup(1, this.sortBindGroupScatter1);
+        //             const workgroupSize = 256;
+        //             const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+        //             pass.dispatchWorkgroups(numWorkgroups);
+        //             pass.end();
+        //         }
+        //         {
+        //             const pass = commandEncoder.beginComputePass();
+        //             pass.setPipeline(this.sortPipelineCopy);
+        //             pass.setBindGroup(0, this.sortBindGroupCopy0);
+        //             pass.setBindGroup(1, this.sortBindGroupCopy1);
+        //             const workgroupSize = 256;
+        //             const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+        //             pass.dispatchWorkgroups(numWorkgroups);
+        //             pass.end();
+        //         }
+        //     }
+        // }
 
         // Pass 3: Raster Render Pass
         {

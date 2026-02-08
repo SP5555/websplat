@@ -51,6 +51,10 @@ struct Splat2D {
 @group(1) @binding(2) var<storage, read_write> depthKeys : array<u32>;
 
 fn f32_to_sortable_u32(x: f32) -> u32 {
+
+    // sentinel value for out-of-range depth
+    if (abs(x) >= 1.0) { return 0xFFFFFFFFu; }
+
     let b = bitcast<u32>(x);
 
     // positive floats: flip sign bit
