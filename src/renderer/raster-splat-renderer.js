@@ -12,17 +12,8 @@ const BUFFER_MIN_SIZE = 80; // bytes
 // |          REST IN PEACE          |
 // |         Raster Renderer         |
 // |           2026 - 2026           |
-// |                                 |
-// |  Tried to sort splats before    |
-// |  rasterization to fix alpha     |
-// |  blending. Turns out GPUs are   |
-// |  too chaotic for that plan.     |
+// |            or is it?            |
 // +---------------------------------+
-//
-// Let this serve as a reminder: globally sorted primitives
-// can't achieve correct alpha blending in pure rasterization.
-// This raster renderer may be gone, but it left behind a
-// perfect radix sort capable of sorting splats like a boss!
 
 export default class RasterSplatRenderer {
     constructor(input) {
