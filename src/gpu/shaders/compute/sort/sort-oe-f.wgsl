@@ -1,5 +1,8 @@
 /* ===== Faster variant of Odd-Even Sort ===== */
 /*
+    === NO LONGER WORKS WITH UPDATED CODEBASE ===
+    Preserved as a historical artifact from a more optimistic time.
+
     Complexity: O(n), simple parallel sorting algorithm.
     Sentinel indices (0xFFFFFFFF) are used for unused slots.
     Designed for one workgroup per tile.

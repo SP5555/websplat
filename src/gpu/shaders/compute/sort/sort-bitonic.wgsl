@@ -21,6 +21,9 @@ struct GlobalParams {
 @group(1) @binding(1) var<storage, read_write> inOutTileIndices : array<u32>;
 @group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
 
+@group(1) @binding(3) var<storage, read_write> bucketFlags : array<u32>;
+@group(1) @binding(4) var<storage, read_write> dstTileIndices: array<u32>;
+
 const SENTINEL_IDX = 0xFFFFFFFFu;
 const SENTINEL_KEY = 0xFFFFFFFFu;
 
@@ -55,6 +58,11 @@ fn cs_main(@builtin(local_invocation_id) thread_local_id : vec3<u32>,
     let threadID = thread_local_id.x;
     let tileID = workgroup_id.x;
     let MAX_PER_TILE = uGParams.maxPerTile;
+
+    // bucketFlags and dstTileIndices are not used
+    // but are accessed to prevent the compiler from optimizing them away
+    _ = bucketFlags[0];
+    _ = dstTileIndices[0];
 
     let countInTile = min(inTileCounters[tileID], MAX_PER_TILE);
     if (countInTile == 0u) { return; }

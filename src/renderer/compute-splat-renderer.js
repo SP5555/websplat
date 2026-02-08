@@ -170,6 +170,18 @@ export default class ComputeSplatRenderer {
             usage: GPUBufferUsage.STORAGE
         });
 
+        this.bucketFlagsBuffer = this.device.createBuffer({
+            label: "Bucket Flags Buffer",
+            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_SPLATS_PER_TILE * 4),
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        this.dstTileIndicesBuffer = this.device.createBuffer({
+            label: "Dst Tile Indices Buffer",
+            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_SPLATS_PER_TILE * 4),
+            usage: GPUBufferUsage.STORAGE
+        });
+
         // holds the current number of splats in each tile (uint32)
         this.tileCountersBuffer = this.device.createBuffer({
             label: "Tile Counters Buffer",
@@ -303,7 +315,9 @@ export default class ComputeSplatRenderer {
             entries: [
                 { binding: 0, resource: { buffer: this.depthKeysBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.bucketFlagsBuffer } },
+                { binding: 4, resource: { buffer: this.dstTileIndicesBuffer } }
             ]
         });
     }
@@ -455,7 +469,9 @@ export default class ComputeSplatRenderer {
             entries: [
                 { binding: 0, resource: { buffer: this.depthKeysBuffer } },
                 { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 2, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 3, resource: { buffer: this.bucketFlagsBuffer } },
+                { binding: 4, resource: { buffer: this.dstTileIndicesBuffer } }
             ]
         });
 
