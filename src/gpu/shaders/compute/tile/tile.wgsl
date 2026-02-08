@@ -8,7 +8,7 @@ struct GlobalParams {
     splatCount : u32,
     gridX : u32,
     gridY : u32,
-    maxPerTile : u32,
+    maxSortableSplatCount : u32,
 };
 
 struct CanvasParams {
@@ -16,23 +16,50 @@ struct CanvasParams {
     height : u32,
 };
 
+struct SortableSplatCount {
+    count : atomic<u32>,
+};
+
+struct Key {
+    tileID : u32,
+    depth : u32,
+};
+
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 @group(0) @binding(1) var<uniform> uCParams : CanvasParams;
 
 @group(1) @binding(0) var<storage, read> inSplats : array<Splat2D>;
-@group(1) @binding(1) var<storage, read_write> outTileIndices : array<u32>;
-@group(1) @binding(2) var<storage, read_write> outTileCounters : array<atomic<u32>>;
+@group(1) @binding(1) var<storage, read_write> outTileCounters : array<atomic<u32>>;
+@group(1) @binding(2) var<storage, read_write> depthKeys : array<Key>;
+@group(1) @binding(3) var<storage, read_write> splatIDs : array<u32>;
+@group(1) @binding(4) var<storage, read_write> sortableSplatCount : SortableSplatCount;
+
+fn f32_to_sortable_u32(x: f32) -> u32 {
+    let b = bitcast<u32>(x);
+
+    // positive floats: flip sign bit
+    // negative floats: invert all bits
+    return select(~b, b ^ 0x80000000u, (b >> 31u) == 0u);
+}
+
+fn make_key(tileID: u32, depth: f32) -> Key {
+    let b = bitcast<u32>(depth);
+
+    return Key(tileID, f32_to_sortable_u32(depth));
+}
 
 fn toIndex(x : u32, y : u32) -> u32 {
     return u32(y * uGParams.gridX + x);
 }
 
 fn tryPush(tileIdx: u32, splatIdx: u32) {
-    // note: atomicAdd will overshoot the max
-    // be sure to clamp the counter afterwards
-    let idx = atomicAdd(&outTileCounters[tileIdx], 1u);
-    if (idx < uGParams.maxPerTile) {
-        outTileIndices[tileIdx * uGParams.maxPerTile + idx] = splatIdx;
+    let idx = atomicAdd(&sortableSplatCount.count, 1u);
+
+    if (idx < uGParams.maxSortableSplatCount) {
+        let key = make_key(tileIdx, inSplats[splatIdx].pos.z);
+        atomicAdd(&outTileCounters[tileIdx], 1u);
+        depthKeys[idx] = key;
+        splatIDs[idx] = splatIdx;
     }
 }
 

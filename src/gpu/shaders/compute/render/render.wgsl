@@ -12,7 +12,7 @@ struct GlobalParams {
     splatCount : u32,
     gridX : u32,
     gridY : u32,
-    maxPerTile : u32,
+    maxSortableSplatCount : u32,
 };
 
 struct CanvasParams {
@@ -20,12 +20,17 @@ struct CanvasParams {
     height : u32,
 };
 
+struct SortableSplatCount {
+    count : u32,
+}
+
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 @group(0) @binding(1) var<uniform> uCParams : CanvasParams;
 
 @group(1) @binding(0) var<storage, read> inSplats : array<Splat2D>;
-@group(1) @binding(1) var<storage, read> inTileIndices : array<u32>;
-@group(1) @binding(2) var<storage, read> inTileCounters : array<u32>;
+@group(1) @binding(1) var<storage, read> inTileCounters : array<u32>;
+@group(1) @binding(2) var<storage, read> inSplatIDs : array<u32>;
+@group(1) @binding(3) var<storage, read> inSortableSplatCount : SortableSplatCount;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
@@ -54,7 +59,16 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     let tileY = u32(clamp(floor(uv.y * f32(uGParams.gridY)), 0.0, f32(uGParams.gridY - 1)));
     let tileID = u32(tileY * uGParams.gridX + tileX);
 
-    let count = min(inTileCounters[tileID], uGParams.maxPerTile);
+    let startSplatIDIdx = inTileCounters[tileID];
+    var endSplatIDIdx : u32;
+    if (tileID == uGParams.gridX * uGParams.gridY - 1u) {
+        endSplatIDIdx = inSortableSplatCount.count;
+    } else {
+        endSplatIDIdx = inTileCounters[tileID + 1u];
+    }
+
+    let splatCountInTile = endSplatIDIdx - startSplatIDIdx;
+    return vec4<f32>(vec3<f32>(f32(splatCountInTile)), 1.0);
 
     var accumColor = vec3<f32>(0.0);
     var accumAlpha = 0.0;
@@ -62,8 +76,8 @@ fn fs_main(@builtin(position) fragCoord : vec4<f32>) -> @location(0) vec4<f32> {
     // uv is in [0,1], fragNDC is in [-1,1]
     let fragNDC = uv * 2.0 - vec2<f32>(1.0);
 
-    for (var i = 0u; i < count; i = i + 1u) {
-        let s = inSplats[inTileIndices[tileID * uGParams.maxPerTile + i]];
+    for (var i = startSplatIDIdx; i < endSplatIDIdx; i = i + 1u) {
+        let s = inSplats[inSplatIDs[i]];
 
         let dx = fragNDC.x - s.pos.x;
         let dy = fragNDC.y - s.pos.y;

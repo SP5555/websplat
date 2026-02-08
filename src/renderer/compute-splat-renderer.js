@@ -10,18 +10,18 @@ const BUFFER_MIN_SIZE = 80; // bytes
 
 export default class ComputeSplatRenderer {
     constructor(input) {
-        // max buffer size limit = 2^27 bytes
-        // GRID_SIZE.x * GRID_SIZE.y * MAX_SPLATS_PER_TILE * 4 <= 2^27
-        // keep the grid dimensions the power of 2
-        // otherwise, sorting shader won't work correctly
+        this.MAX_BUFFER_SIZE = Math.pow(2, 27); // bytes
         this.GRID_SIZE = { x: 32, y: 32 };
-        this.MAX_SPLATS_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
-        this.clearTilesShaderPath = './src/gpu/shaders/compute/clear-tiles/clear-tiles.wgsl';
-        this.transformShaderPath  = './src/gpu/shaders/compute/transform/transform.wgsl';
-        this.tileShaderPath       = './src/gpu/shaders/compute/tile/tile.wgsl';
-        this.sortShaderPath       = './src/gpu/shaders/compute/sort/sort-bitonic.wgsl';
-        this.renderShaderPath     = './src/gpu/shaders/compute/render/render.wgsl';
+        this.clearTilesShaderPath  = './src/gpu/shaders/compute/clear-tiles/clear-tiles.wgsl';
+        this.transformShaderPath   = './src/gpu/shaders/compute/transform/transform.wgsl';
+        this.tileShaderPath        = './src/gpu/shaders/compute/tile/tile.wgsl';
+        this.tileSumShaderPath     = './src/gpu/shaders/compute/tile/tile-prefix-sum.wgsl';
+        this.sortShader0Path       = './src/gpu/shaders/compute/sort/sort-radix-count.wgsl';
+        this.sortShader1Path       = './src/gpu/shaders/compute/sort/sort-radix-scan.wgsl';
+        this.sortShader2Path       = './src/gpu/shaders/compute/sort/sort-radix-scatter.wgsl';
+        this.sortShader3Path       = './src/gpu/shaders/compute/sort/sort-radix-copy.wgsl';
+        this.renderShaderPath      = './src/gpu/shaders/compute/render/render.wgsl';
 
         /* ===== Private Zone ===== */
         this.canvas = document.getElementById('canvas00');
@@ -43,7 +43,10 @@ export default class ComputeSplatRenderer {
         // main 4 stages
         this.transformPipeline = null;
         this.tilePipeline = null;
-        this.sortPipeline = null;
+        this.sortPipeline0 = null;
+        this.sortPipeline1 = null;
+        this.sortPipeline2 = null;
+        this.sortPipeline3 = null;
         this.renderPipeline = null;
         
         this.isPipelineInitialized = false;
@@ -117,9 +120,17 @@ export default class ComputeSplatRenderer {
         
         this.tileShader = new WGSLShader(this.device, this.tileShaderPath);
         await this.tileShader.load();
+        this.tileSumShader = new WGSLShader(this.device, this.tileSumShaderPath);
+        await this.tileSumShader.load();
 
-        this.sortShader = new WGSLShader(this.device, this.sortShaderPath);
-        await this.sortShader.load();
+        this.sortShader0 = new WGSLShader(this.device, this.sortShader0Path);
+        await this.sortShader0.load();
+        this.sortShader1 = new WGSLShader(this.device, this.sortShader1Path);
+        await this.sortShader1.load();
+        this.sortShader2 = new WGSLShader(this.device, this.sortShader2Path);
+        await this.sortShader2.load();
+        this.sortShader3 = new WGSLShader(this.device, this.sortShader3Path);
+        await this.sortShader3.load();
 
         this.renderShader = new WGSLShader(this.device, this.renderShaderPath);
         await this.renderShader.load();
@@ -155,36 +166,90 @@ export default class ComputeSplatRenderer {
             usage: GPUBufferUsage.STORAGE
         });
 
-        // buffer that holds the transformed splat Z positions,
+        // buffer that holds u64 depth keys,
         // used for depth sorting during the sort pass for faster memory access
         this.depthKeysBuffer = this.device.createBuffer({
             label: "Depth Keys Buffer",
+            size: this.MAX_BUFFER_SIZE,
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        // buffer that holds the splat u32 IDs,
+        this.splatIDBuffer = this.device.createBuffer({
+            label: "Splat ID Buffer",
+            size: this.MAX_BUFFER_SIZE / 2,
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        // holds the current number of splats in each tile (u32)
+        this.tileCountersBuffer = this.device.createBuffer({
+            label: "Tile Counters Buffer",
+            size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4,
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        this.sortableSplatCountBuffer = this.device.createBuffer({
+            label: "Sortable Splat Count Buffer",
+            size: 4, // 1x uint32
+            usage: GPUBufferUsage.STORAGE
+        });
+
+        /* ===== Radix Sort Buffers ===== */
+        this.depthKeysOutBuffer = this.device.createBuffer({
+            label: "Depth Keys Out Buffer",
+            size: this.MAX_BUFFER_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        this.splatIDOutBuffer = this.device.createBuffer({
+            label: "Splat ID Out Buffer",
+            size: this.MAX_BUFFER_SIZE / 2,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        this.radixParamsBuffer = this.device.createBuffer({
+            label: "Radix Params Buffer",
+            size: 4, // 1x u32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        // buffer for radix sort counters
+        // each workgroup has 256 u32 local counters
+        this.radixLocalCounterBuffer = this.device.createBuffer({
+            label: "Radix Counter Buffer",
             size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
-        // each tile holds MAX_SPLATS_PER_TILE indices (uint32)
-        this.tileIndicesBuffer = this.device.createBuffer({
-            label: "Tile Indices Buffer",
-            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_SPLATS_PER_TILE * 4),
-            usage: GPUBufferUsage.STORAGE
+        // 256 counters of u32 for 8 bits field
+        this.radixGlobalCounterBuffer = this.device.createBuffer({
+            label: "Radix Global Counter Buffer",
+            size: 256 * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         });
 
-        // holds the current number of splats in each tile (uint32)
-        this.tileCountersBuffer = this.device.createBuffer({
-            label: "Tile Counters Buffer",
-            size: this.GRID_SIZE.x * this.GRID_SIZE.y * 4, // 1x uint32 per tile
+        // this tracks the buckets the elements belong to
+        // used in scan pass to determine local bucket offsets
+        this.radixBucketFlagBuffer = this.device.createBuffer({
+            label: "Radix Bucket Flag Buffer",
+            size: BUFFER_MIN_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
+        /* ===== ===== ===== ===== */
 
         // splat count in the scene, grid sizes and max splats a tile can hold
-        // COPY_DST for future GRID_SIZE or MAX_SPLATS_PER_TILE changes
+        // COPY_DST for future GRID_SIZE changes
         this.globalParamsBuffer = this.device.createBuffer({
             label: "Global Params Buffer",
             size: 4 * 4, // 4x uint32
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
-        const globalParams = new Uint32Array([this.splatCount, this.GRID_SIZE.x, this.GRID_SIZE.y, this.MAX_SPLATS_PER_TILE]);
+        const globalParams = new Uint32Array([
+            this.splatCount,
+            this.GRID_SIZE.x,
+            this.GRID_SIZE.y,
+            this.MAX_BUFFER_SIZE / 128 // max sortable splats
+        ]);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
 
         // canvas width and height
@@ -208,18 +273,12 @@ export default class ComputeSplatRenderer {
             }
         });
 
-        this.clearTilesBindGroup0 = this.device.createBindGroup({
-            layout: this.clearTilesPipeline.getBindGroupLayout(0),
-            entries: [
-                { binding: 0, resource: { buffer: this.globalParamsBuffer } }
-            ]
-        });
-
         this.clearTilesBindGroup1 = this.device.createBindGroup({
             layout: this.clearTilesPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 1, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 0, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 1, resource: { buffer: this.sortableSplatCountBuffer } },
+                { binding: 2, resource: { buffer: this.radixGlobalCounterBuffer } },
             ]
         });
     }
@@ -247,8 +306,7 @@ export default class ComputeSplatRenderer {
             layout: this.transformPipeline.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.spat3DBuffer } },
-                { binding: 1, resource: { buffer: this.spat2DBuffer } },
-                { binding: 2, resource: { buffer: this.depthKeysBuffer } }
+                { binding: 1, resource: { buffer: this.spat2DBuffer } }
             ]
         });
     }
@@ -259,6 +317,15 @@ export default class ComputeSplatRenderer {
             layout: 'auto',
             compute: {
                 module: this.tileShader.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.tileSumPipeline = this.device.createComputePipeline({
+            label: "Tile Prefix Sum Pipeline",
+            layout: 'auto',
+            compute: {
+                module: this.tileSumShader.getModule(),
                 entryPoint: 'cs_main'
             }
         });
@@ -275,35 +342,105 @@ export default class ComputeSplatRenderer {
             layout: this.tilePipeline.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.spat2DBuffer } },
-                { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeysBuffer } },
+                { binding: 3, resource: { buffer: this.splatIDBuffer } },
+                { binding: 4, resource: { buffer: this.sortableSplatCountBuffer } }
+            ]
+        });
+
+        this.tileSumBindGroup = this.device.createBindGroup({
+            layout: this.tileSumPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.tileCountersBuffer } }
             ]
         });
     }
 
     createSortPipeline() {
-        this.sortPipeline = this.device.createComputePipeline({
-            label: "Sort Pipeline",
+        this.sortPipelineCount = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Count",
             layout: 'auto',
             compute: {
-                module: this.sortShader.getModule(),
+                module: this.sortShader0.getModule(),
                 entryPoint: 'cs_main'
             }
         });
 
-        this.sortBindGroup0 = this.device.createBindGroup({
-            layout: this.sortPipeline.getBindGroupLayout(0),
+        this.sortPipelineScan = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Global Counter Scan",
+            layout: 'auto',
+            compute: {
+                module: this.sortShader1.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.sortPipelineScatter = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Scatter",
+            layout: 'auto',
+            compute: {
+                module: this.sortShader2.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.sortPipelineCopy = this.device.createComputePipeline({
+            label: "Sort Pipeline: Radix Copy",
+            layout: 'auto',
+            compute: {
+                module: this.sortShader3.getModule(),
+                entryPoint: 'cs_main'
+            }
+        });
+
+        this.sortBindGroupCount0 = this.device.createBindGroup({
+            layout: this.sortPipelineCount.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.globalParamsBuffer } }
+                { binding: 0, resource: { buffer: this.radixParamsBuffer } }
             ]
         });
-        
-        this.sortBindGroup1 = this.device.createBindGroup({
-            layout: this.sortPipeline.getBindGroupLayout(1),
+
+        this.sortBindGroupCount1 = this.device.createBindGroup({
+            layout: this.sortPipelineCount.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.depthKeysBuffer } },
-                { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 1, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 2, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 3, resource: { buffer: this.radixBucketFlagBuffer } },
+                { binding: 4, resource: { buffer: this.sortableSplatCountBuffer } }
+            ]
+        });
+
+        this.sortBindGroupScan1 = this.device.createBindGroup({
+            layout: this.sortPipelineScan.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.radixGlobalCounterBuffer } },
+            ]
+        });
+
+        this.sortBindGroupScatter1 = this.device.createBindGroup({
+            layout: this.sortPipelineScatter.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.depthKeysBuffer }},
+                { binding: 1, resource: { buffer: this.splatIDBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeysOutBuffer }},
+                { binding: 3, resource: { buffer: this.splatIDOutBuffer } },
+                { binding: 4, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 5, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 6, resource: { buffer: this.radixBucketFlagBuffer } },
+                { binding: 7, resource: { buffer: this.sortableSplatCountBuffer } }
+            ]
+        });
+
+        this.sortBindGroupCopy1 = this.device.createBindGroup({
+            layout: this.sortPipelineCopy.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.depthKeysBuffer }},
+                { binding: 1, resource: { buffer: this.splatIDBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeysOutBuffer }},
+                { binding: 3, resource: { buffer: this.splatIDOutBuffer } },
+                { binding: 4, resource: { buffer: this.sortableSplatCountBuffer } }
             ]
         });
     }
@@ -337,8 +474,9 @@ export default class ComputeSplatRenderer {
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.spat2DBuffer } },
-                { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 2, resource: { buffer: this.splatIDBuffer } },
+                { binding: 3, resource: { buffer: this.sortableSplatCountBuffer } },
             ]
         });
     }
@@ -390,7 +528,7 @@ export default class ComputeSplatRenderer {
             splatCount,
             this.GRID_SIZE.x,
             this.GRID_SIZE.y,
-            this.MAX_SPLATS_PER_TILE
+            this.MAX_BUFFER_SIZE / 128 // max sortable splats
         ]);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
     }
@@ -410,25 +548,28 @@ export default class ComputeSplatRenderer {
             usage: GPUBufferUsage.STORAGE
         });
 
-        if (this.depthKeysBuffer) this.depthKeysBuffer.destroy();
-        this.depthKeysBuffer = this.device.createBuffer({
-            label: "Depth Keys Buffer",
-            size: splatCount * 4, // 1x f32 per splat
+        const RADIX_THREADS_PER_WORKGROUP = 256; // must match sort-radix.wgsl
+        if (this.radixLocalCounterBuffer) this.radixLocalCounterBuffer.destroy();
+        if (this.radixBucketFlagBuffer) this.radixBucketFlagBuffer.destroy();
+        this.radixLocalCounterBuffer = this.device.createBuffer({
+            label: "Radix Local Counter Buffer",
+            // each workgroup has 256 u32 local counters
+            size: Math.ceil(splatCount / RADIX_THREADS_PER_WORKGROUP) * 256 * 4,
             usage: GPUBufferUsage.STORAGE
         });
-
-        if (this.tileIndicesBuffer) this.tileIndicesBuffer.destroy();
-        this.tileIndicesBuffer = this.device.createBuffer({
-            label: "Tile Indices Buffer",
-            size: Math.max(BUFFER_MIN_SIZE, this.GRID_SIZE.x * this.GRID_SIZE.y * this.MAX_SPLATS_PER_TILE * 4),
+        this.radixBucketFlagBuffer = this.device.createBuffer({
+            label: "Radix Bucket Flag Buffer",
+            // each splat belongs to one radix bucket indicated by a u32 value
+            size: splatCount * 4,
             usage: GPUBufferUsage.STORAGE
         });
 
         this.clearTilesBindGroup1 = this.device.createBindGroup({
             layout: this.clearTilesPipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 1, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 0, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 1, resource: { buffer: this.sortableSplatCountBuffer } },
+                { binding: 2, resource: { buffer: this.radixGlobalCounterBuffer } },
             ]
         });
 
@@ -436,8 +577,7 @@ export default class ComputeSplatRenderer {
             layout: this.transformPipeline.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.spat3DBuffer } },
-                { binding: 1, resource: { buffer: this.spat2DBuffer } },
-                { binding: 2, resource: { buffer: this.depthKeysBuffer } }
+                { binding: 1, resource: { buffer: this.spat2DBuffer } }
             ]
         });
 
@@ -445,17 +585,35 @@ export default class ComputeSplatRenderer {
             layout: this.tilePipeline.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.spat2DBuffer } },
-                { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeysBuffer } },
+                { binding: 3, resource: { buffer: this.splatIDBuffer } },
+                { binding: 4, resource: { buffer: this.sortableSplatCountBuffer } }
             ]
         });
 
-        this.sortBindGroup1 = this.device.createBindGroup({
-            layout: this.sortPipeline.getBindGroupLayout(1),
+        this.sortBindGroupCount1 = this.device.createBindGroup({
+            layout: this.sortPipelineCount.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.depthKeysBuffer } },
-                { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 1, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 2, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 3, resource: { buffer: this.radixBucketFlagBuffer } },
+                { binding: 4, resource: { buffer: this.sortableSplatCountBuffer } }
+            ]
+        });
+
+        this.sortBindGroupScatter1 = this.device.createBindGroup({
+            layout: this.sortPipelineScatter.getBindGroupLayout(1),
+            entries: [
+                { binding: 0, resource: { buffer: this.depthKeysBuffer }},
+                { binding: 1, resource: { buffer: this.splatIDBuffer } },
+                { binding: 2, resource: { buffer: this.depthKeysOutBuffer }},
+                { binding: 3, resource: { buffer: this.splatIDOutBuffer } },
+                { binding: 4, resource: { buffer: this.radixLocalCounterBuffer } },
+                { binding: 5, resource: { buffer: this.radixGlobalCounterBuffer } },
+                { binding: 6, resource: { buffer: this.radixBucketFlagBuffer } },
+                { binding: 7, resource: { buffer: this.sortableSplatCountBuffer } }
             ]
         });
 
@@ -463,8 +621,9 @@ export default class ComputeSplatRenderer {
             layout: this.renderPipeline.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.spat2DBuffer } },
-                { binding: 1, resource: { buffer: this.tileIndicesBuffer } },
-                { binding: 2, resource: { buffer: this.tileCountersBuffer } }
+                { binding: 1, resource: { buffer: this.tileCountersBuffer } },
+                { binding: 2, resource: { buffer: this.splatIDBuffer } },
+                { binding: 3, resource: { buffer: this.sortableSplatCountBuffer } },
             ]
         });
     }
@@ -482,7 +641,6 @@ export default class ComputeSplatRenderer {
         {
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.clearTilesPipeline);
-            pass.setBindGroup(0, this.clearTilesBindGroup0);
             pass.setBindGroup(1, this.clearTilesBindGroup1);
             const numWorkgroups = this.GRID_SIZE.x * this.GRID_SIZE.y;
             pass.dispatchWorkgroups(numWorkgroups);
@@ -503,25 +661,66 @@ export default class ComputeSplatRenderer {
 
         // Pass 2: Tiling Pass
         {
-            const pass = encoder.beginComputePass();
-            pass.setPipeline(this.tilePipeline);
-            pass.setBindGroup(0, this.tileBindGroup0);
-            pass.setBindGroup(1, this.tileBindGroup1);
-            const WGSize = 128;
-            const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / WGSize));
-            pass.dispatchWorkgroups(numWorkgroups);
-            pass.end();
+            {
+                const pass = encoder.beginComputePass();
+                pass.setPipeline(this.tilePipeline);
+                pass.setBindGroup(0, this.tileBindGroup0);
+                pass.setBindGroup(1, this.tileBindGroup1);
+                const WGSize = 128;
+                const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / WGSize));
+                pass.dispatchWorkgroups(numWorkgroups);
+                pass.end();
+            }
+            {
+                const pass = encoder.beginComputePass();
+                pass.setPipeline(this.tileSumPipeline);
+                pass.setBindGroup(0, this.tileSumBindGroup);
+                pass.dispatchWorkgroups(1);
+                pass.end();
+            }
         }
 
-        // Pass 3: Sorting Pass
+        // Pass 3: Radix Sort Pass
         {
-            const pass = encoder.beginComputePass();
-            pass.setPipeline(this.sortPipeline);
-            pass.setBindGroup(0, this.sortBindGroup0);
-            pass.setBindGroup(1, this.sortBindGroup1);
-            const numWorkgroups = this.GRID_SIZE.x * this.GRID_SIZE.y;
-            pass.dispatchWorkgroups(numWorkgroups);
-            pass.end();
+            for (let offset = 0; offset < 64; offset += 8) {
+                const RadixParams = new Uint32Array([offset]);
+                this.device.queue.writeBuffer(this.radixParamsBuffer, 0, RadixParams);
+                {
+                    const pass = encoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineCount);
+                    pass.setBindGroup(0, this.sortBindGroupCount0);
+                    pass.setBindGroup(1, this.sortBindGroupCount1);
+                    const workgroupSize = 256;
+                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    pass.dispatchWorkgroups(numWorkgroups);
+                    pass.end();
+                }
+                {
+                    const pass = encoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineScan);
+                    pass.setBindGroup(1, this.sortBindGroupScan1);
+                    pass.dispatchWorkgroups(1);
+                    pass.end();
+                }
+                {
+                    const pass = encoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineScatter);
+                    pass.setBindGroup(1, this.sortBindGroupScatter1);
+                    const workgroupSize = 256;
+                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    pass.dispatchWorkgroups(numWorkgroups);
+                    pass.end();
+                }
+                {
+                    const pass = encoder.beginComputePass();
+                    pass.setPipeline(this.sortPipelineCopy);
+                    pass.setBindGroup(1, this.sortBindGroupCopy1);
+                    const workgroupSize = 256;
+                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    pass.dispatchWorkgroups(numWorkgroups);
+                    pass.end();
+                }
+            }
         }
 
         // Pass 4: Final Render Pass
