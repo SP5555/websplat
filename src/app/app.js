@@ -4,11 +4,11 @@ import ComputeSplatRenderer from "../renderer/compute-splat-renderer.js";
 // import RasterSplatRenderer from "../renderer/raster-splat-renderer.js";
 import GUIManager from "../gui/gui-manager.js";
 import HUDManager from "../hud/hud-manager.js";
-import PLYLoader from "../loaders/ply-loader.js";
 import { eventBus } from "../utils/event-emitters.js";
 import { EVENTS } from "../utils/event.js";
 import Input from "../input/input.js";
-import { GaussianPrecompute } from "../gaussian/gaussian-precompute.js";
+import { computeCovariances } from "../gaussian/gaussian-precompute.js";
+import MeshLoader from "../loaders/mesh-loader.js";
 
 export default class App {
     constructor() {
@@ -17,7 +17,7 @@ export default class App {
         // this.renderer = new RasterSplatRenderer(this.input);
         this.guiManager = new GUIManager();
         this.hud = new HUDManager();
-        this.plyLoader = new PLYLoader();
+        this.meshLoader = new MeshLoader();
 
         this.overlayAccumulator = 0;
         this.overlayFrameCount = 0;
@@ -25,12 +25,12 @@ export default class App {
         this.lastTime = 0;
         
         eventBus.on(EVENTS.FILE_LOAD, async (file) => {
-            const meshData = await this.plyLoader.load(file);
+            const meshData = await this.meshLoader.load(file);
             eventBus.emit(EVENTS.MESH_READY, meshData);
         });
 
         eventBus.on(EVENTS.MESH_READY, (meshData) => {
-            this.renderer.setMeshData(GaussianPrecompute(meshData));
+            this.renderer.setMeshData(computeCovariances(meshData));
         });
     }
 

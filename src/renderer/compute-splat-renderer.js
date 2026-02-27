@@ -14,7 +14,7 @@ export default class ComputeSplatRenderer {
         // GRID_SIZE.x * GRID_SIZE.y * MAX_SPLATS_PER_TILE * 4 <= 2^27
         // keep the grid dimensions the power of 2
         // otherwise, sorting shader won't work correctly
-        this.GRID_SIZE = { x: 32, y: 32 };
+        this.GRID_SIZE = { x: 64, y: 64 };
         this.MAX_SPLATS_PER_TILE = Math.pow(2, 25 - Math.log2(this.GRID_SIZE.x * this.GRID_SIZE.y));
 
         this.clearTilesShaderPath = './src/gpu/shaders/compute/clear-tiles/clear-tiles.wgsl';

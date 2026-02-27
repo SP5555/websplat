@@ -2,7 +2,56 @@
 
 import { quat, mat3 } from 'gl-matrix';
 
-export function GaussianPrecompute(raw) {
+export function centerAndScaleGaussianData(data) {
+    const {
+        vertexCount,
+        positions,
+        scales,
+        rotations,
+        colors,
+        opacities
+    } = data;
+
+    // normalize positions
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < vertexCount; i++) {
+        const x = positions[i * 3 + 0];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const centerZ = (minZ + maxZ) / 2;
+    // scale factor: largest dimension fits in [-1,1]
+    const maxRange = Math.max(
+        maxX - minX,
+        maxY - minY,
+        maxZ - minZ
+    );
+    const scale = 2 / maxRange;
+
+    // normalize positions between -1 and 1
+    // scale is adjusted accordingly
+    for (let i = 0; i < vertexCount; i++) {
+        positions[i * 3 + 0] = (positions[i * 3 + 0] - centerX) * scale;
+        positions[i * 3 + 1] = (positions[i * 3 + 1] - centerY) * scale;
+        positions[i * 3 + 2] = (positions[i * 3 + 2] - centerZ) * scale;
+
+        scales[i * 3 + 0] = scales[i * 3 + 0] * scale;
+        scales[i * 3 + 1] = scales[i * 3 + 1] * scale;
+        scales[i * 3 + 2] = scales[i * 3 + 2] * scale;
+    }
+
+    return data;
+}
+
+export function computeCovariances(raw) {
     // positions, scales, rotations, opacities are Float32Arrays
     const { vertexCount, positions, scales, rotations, colors, opacities } = raw;
 

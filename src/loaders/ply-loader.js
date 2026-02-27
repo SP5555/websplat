@@ -93,54 +93,10 @@ export default class PLYLoader {
             opacities[i] = dataView.getFloat32(baseOffset + idx.opacity * floatSize, true);
         }
 
-        // normalize positions between -1 and 1
-        let minX = Infinity, maxX = -Infinity;
-        let minY = Infinity, maxY = -Infinity;
-        let minZ = Infinity, maxZ = -Infinity;
         for (let i = 0; i < vertexCount; i++) {
-            const x = positions[i * 3 + 0];
-            const y = positions[i * 3 + 1];
-            const z = positions[i * 3 + 2];
-
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-        }
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        const centerZ = (minZ + maxZ) / 2;
-        const rangeX = maxX - minX;
-        const rangeY = maxY - minY;
-        const rangeZ = maxZ - minZ;
-        
-        // scale factor: largest dimension fits in [-1,1]
-        const maxRange = Math.max(rangeX, rangeY, rangeZ);
-        const scale = 2 / maxRange;
-
-        // apply centering and scaling, plus optional flip
-        for (let i = 0; i < vertexCount; i++) {
-            let x = positions[i * 3 + 0];
-            let y = positions[i * 3 + 1];
-            let z = positions[i * 3 + 2];
-
-            // shift to center
-            x -= centerX;
-            y -= centerY;
-            z -= centerZ;
-
-            // scale
-            x *= scale;
-            y *= scale;
-            z *= scale;
-
-            positions[i * 3 + 0] = x;
-            positions[i * 3 + 1] = y;
-            positions[i * 3 + 2] = z;
-
-            // apply expf and scale
-            scales[i * 3 + 0] = this.expf(scales[i * 3 + 0]) * scale;
-            scales[i * 3 + 1] = this.expf(scales[i * 3 + 1]) * scale;
-            scales[i * 3 + 2] = this.expf(scales[i * 3 + 2]) * scale;
+            scales[i * 3 + 0] = this.expf(scales[i * 3 + 0]);
+            scales[i * 3 + 1] = this.expf(scales[i * 3 + 1]);
+            scales[i * 3 + 2] = this.expf(scales[i * 3 + 2]);
 
             // apply sigmoid to opacities
             opacities[i] = this.sigmoid(opacities[i]);

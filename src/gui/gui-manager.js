@@ -13,7 +13,7 @@ export default class GUIManager {
     }
 
     setupGUI() {
-        this.gui.add({ loadShader: () => this.fileInput.click() }, 'loadShader').name('Open PLY File');
+        this.gui.add({ loadShader: () => this.fileInput.click() }, 'loadShader').name('Open Mesh File');
 
         // default values
         const state = {
@@ -44,7 +44,7 @@ export default class GUIManager {
     setupFileInput() {
         this.fileInput = document.createElement('input');
         this.fileInput.type = 'file';
-        this.fileInput.accept = '.ply';
+        this.fileInput.accept = '.ply,.json';
         this.fileInput.style.display = 'none';
         document.body.appendChild(this.fileInput);
 

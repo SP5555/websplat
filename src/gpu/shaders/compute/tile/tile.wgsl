@@ -77,8 +77,8 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     //     return;
     // }
 
-    // discard if the entire splat is smaller than a pixel
-    if (maxRadius < pixelSize) {
+    // discard if the entire splat is smaller than half a pixel
+    if (maxRadius * 4 < pixelSize) {
         return;
     }
 
