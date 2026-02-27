@@ -22,7 +22,9 @@ struct CanvasParams {
 
 struct SortableSplatCount {
     count : u32,
-}
+    // padding until 80 bytes
+    _padding : array<u32, 19>,
+};
 
 @group(0) @binding(0) var<uniform> uGParams : GlobalParams;
 @group(0) @binding(1) var<uniform> uCParams : CanvasParams;

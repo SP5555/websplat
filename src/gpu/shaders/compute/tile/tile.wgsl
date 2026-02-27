@@ -18,6 +18,8 @@ struct CanvasParams {
 
 struct SortableSplatCount {
     count : atomic<u32>,
+    // padding until 80 bytes
+    _padding : array<u32, 19>,
 };
 
 struct Key {

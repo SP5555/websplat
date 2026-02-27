@@ -1,24 +1,35 @@
 /* !!! DO NOT CHANGE this value !!! */
 const THREADS_PER_WORKGROUP = 256u;
 
-struct SortableSplatCount {
-    count : u32,
-}
+struct GlobalParams {
+    splatCount : u32,
+    gridX : u32,
+    gridY : u32,
+    maxSortableSplatCount : u32,
+};
 
 struct Key {
     tileID : u32,
     depth : u32,
 };
 
-@group(1) @binding(0) var<storage, read> depthKeys : array<Key>;
-@group(1) @binding(1) var<storage, read> splatIDs : array<u32>;
-@group(1) @binding(2) var<storage, read_write> outDepthKeys : array<Key>;
-@group(1) @binding(3) var<storage, read_write> outSplatIDs : array<u32>;
+struct SortableSplatCount {
+    count : u32,
+    // padding until 80 bytes
+    _padding : array<u32, 19>,
+};
+
+@group(0) @binding(0) var<uniform> uGlobalParams : GlobalParams;
+
+@group(1) @binding(0) var<storage, read> inKeys : array<Key>;
+@group(1) @binding(1) var<storage, read> inSplatID : array<u32>;
+@group(1) @binding(2) var<storage, read_write> outKeys : array<Key>;
+@group(1) @binding(3) var<storage, read_write> outSplatID : array<u32>;
 
 @group(1) @binding(4) var<storage, read> radixLocalCounters : array<u32>;
-@group(1) @binding(5) var<storage, read> radixGlobalCounters : array<u32>;
+@group(1) @binding(5) var<storage, read_write> radixGlobalCounters : array<u32>;
 @group(1) @binding(6) var<storage, read> radixBucketFlag : array<u32>;
-@group(1) @binding(7) var<storage, read> uSortableSplatCount : SortableSplatCount;
+@group(1) @binding(7) var<storage, read> sortableSplatCount : SortableSplatCount;
 
 // 256 u32 counters for workgroup
 var<workgroup> localCounters : array<atomic<u32>, 256u>;
@@ -34,10 +45,9 @@ fn cs_main(
 ) {
     // load into local workgroup memory
     localBucketFlags[local_id.x] = radixBucketFlag[global_id.x];
-    workgroupBarrier();
     
     let splatIndex = global_id.x;
-    if (splatIndex < uSortableSplatCount.count) {
+    if (splatIndex < sortableSplatCount.count && splatIndex < uGlobalParams.maxSortableSplatCount) {
         let bucket = localBucketFlags[local_id.x];
 
         var destIndex = radixGlobalCounters[bucket];
@@ -51,9 +61,9 @@ fn cs_main(
                 destIndex = destIndex + 1u;
             }
         }
-
-        outDepthKeys[destIndex] = depthKeys[splatIndex];
-        outSplatIDs[destIndex] = splatIDs[splatIndex];
+    
+        outKeys[destIndex] = inKeys[splatIndex];
+        outSplatID[destIndex] = inSplatID[splatIndex];
     }
 
 }

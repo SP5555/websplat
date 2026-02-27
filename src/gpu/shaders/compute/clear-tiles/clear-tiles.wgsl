@@ -1,5 +1,7 @@
 struct SortableSplatCount {
     count : u32,
+    // padding until 80 bytes
+    _padding : array<u32, 19>,
 };
 
 @group(1) @binding(0) var<storage, read_write> outTileCounters : array<u32>;

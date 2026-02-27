@@ -6,11 +6,11 @@ import WGSLShader from "../gpu/shaders/wgsl-shader.js";
 import { eventBus } from "../utils/event-emitters.js";
 import { EVENTS } from "../utils/event.js";
 
-const BUFFER_MIN_SIZE = 80; // bytes
+const MIN_BUFFER_SIZE = 80; // bytes
+const MAX_BUFFER_SIZE = Math.pow(2, 27); // bytes
 
 export default class ComputeSplatRenderer {
     constructor(input) {
-        this.MAX_BUFFER_SIZE = Math.pow(2, 27); // bytes
         this.GRID_SIZE = { x: 32, y: 32 };
 
         this.clearTilesShaderPath  = './src/gpu/shaders/compute/clear-tiles/clear-tiles.wgsl';
@@ -155,14 +155,14 @@ export default class ComputeSplatRenderer {
         // buffer that holds the input splat data for the transform pass
         this.spat3DBuffer = this.device.createBuffer({
             label: "Splat 3D Buffer",
-            size: BUFFER_MIN_SIZE,
+            size: MIN_BUFFER_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         // buffer that holds the transformed splat data from the transform pass
         this.spat2DBuffer = this.device.createBuffer({
             label: "Splat 2D Buffer",
-            size: BUFFER_MIN_SIZE,
+            size: MIN_BUFFER_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -170,14 +170,14 @@ export default class ComputeSplatRenderer {
         // used for depth sorting during the sort pass for faster memory access
         this.depthKeysBuffer = this.device.createBuffer({
             label: "Depth Keys Buffer",
-            size: this.MAX_BUFFER_SIZE,
+            size: MAX_BUFFER_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
         // buffer that holds the splat u32 IDs,
         this.splatIDBuffer = this.device.createBuffer({
             label: "Splat ID Buffer",
-            size: this.MAX_BUFFER_SIZE / 2,
+            size: MAX_BUFFER_SIZE / 2,
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -190,20 +190,20 @@ export default class ComputeSplatRenderer {
 
         this.sortableSplatCountBuffer = this.device.createBuffer({
             label: "Sortable Splat Count Buffer",
-            size: 4, // 1x uint32
+            size: MIN_BUFFER_SIZE, // 1x uint32, 3x uint32 padding
             usage: GPUBufferUsage.STORAGE
         });
 
         /* ===== Radix Sort Buffers ===== */
         this.depthKeysOutBuffer = this.device.createBuffer({
             label: "Depth Keys Out Buffer",
-            size: this.MAX_BUFFER_SIZE,
+            size: MAX_BUFFER_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         this.splatIDOutBuffer = this.device.createBuffer({
             label: "Splat ID Out Buffer",
-            size: this.MAX_BUFFER_SIZE / 2,
+            size: MAX_BUFFER_SIZE / 2,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
@@ -217,7 +217,7 @@ export default class ComputeSplatRenderer {
         // each workgroup has 256 u32 local counters
         this.radixLocalCounterBuffer = this.device.createBuffer({
             label: "Radix Counter Buffer",
-            size: BUFFER_MIN_SIZE,
+            size: MIN_BUFFER_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -232,7 +232,7 @@ export default class ComputeSplatRenderer {
         // used in scan pass to determine local bucket offsets
         this.radixBucketFlagBuffer = this.device.createBuffer({
             label: "Radix Bucket Flag Buffer",
-            size: BUFFER_MIN_SIZE,
+            size: MAX_BUFFER_SIZE,
             usage: GPUBufferUsage.STORAGE
         });
         /* ===== ===== ===== ===== */
@@ -248,7 +248,7 @@ export default class ComputeSplatRenderer {
             this.splatCount,
             this.GRID_SIZE.x,
             this.GRID_SIZE.y,
-            this.MAX_BUFFER_SIZE / 128 // max sortable splats
+            MAX_BUFFER_SIZE / 8 // max sortable splats (each key is 8 bytes)
         ]);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
 
@@ -397,7 +397,8 @@ export default class ComputeSplatRenderer {
         this.sortBindGroupCount0 = this.device.createBindGroup({
             layout: this.sortPipelineCount.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.radixParamsBuffer } }
+                { binding: 0, resource: { buffer: this.globalParamsBuffer } },
+                { binding: 1, resource: { buffer: this.radixParamsBuffer } }
             ]
         });
 
@@ -419,6 +420,13 @@ export default class ComputeSplatRenderer {
             ]
         });
 
+        this.sortBindGroupScatter0 = this.device.createBindGroup({
+            layout: this.sortPipelineScatter.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.globalParamsBuffer } }
+            ]
+        });
+
         this.sortBindGroupScatter1 = this.device.createBindGroup({
             layout: this.sortPipelineScatter.getBindGroupLayout(1),
             entries: [
@@ -433,12 +441,19 @@ export default class ComputeSplatRenderer {
             ]
         });
 
+        this.sortBindGroupCopy0 = this.device.createBindGroup({
+            layout: this.sortPipelineCopy.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.globalParamsBuffer } }
+            ]
+        });
+
         this.sortBindGroupCopy1 = this.device.createBindGroup({
             layout: this.sortPipelineCopy.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: { buffer: this.depthKeysBuffer }},
                 { binding: 1, resource: { buffer: this.splatIDBuffer } },
-                { binding: 2, resource: { buffer: this.depthKeysOutBuffer }},
+                { binding: 2, resource: { buffer: this.depthKeysOutBuffer } },
                 { binding: 3, resource: { buffer: this.splatIDOutBuffer } },
                 { binding: 4, resource: { buffer: this.sortableSplatCountBuffer } }
             ]
@@ -525,10 +540,10 @@ export default class ComputeSplatRenderer {
         this.device.queue.writeBuffer(this.spat3DBuffer, 0, bufferData.buffer);
 
         const globalParams = new Uint32Array([
-            splatCount,
+            this.splatCount,
             this.GRID_SIZE.x,
             this.GRID_SIZE.y,
-            this.MAX_BUFFER_SIZE / 128 // max sortable splats
+            MAX_BUFFER_SIZE / 8, // max sortable splats (each key is 8 bytes)
         ]);
         this.device.queue.writeBuffer(this.globalParamsBuffer, 0, globalParams.buffer);
     }
@@ -550,17 +565,10 @@ export default class ComputeSplatRenderer {
 
         const RADIX_THREADS_PER_WORKGROUP = 256; // must match sort-radix.wgsl
         if (this.radixLocalCounterBuffer) this.radixLocalCounterBuffer.destroy();
-        if (this.radixBucketFlagBuffer) this.radixBucketFlagBuffer.destroy();
         this.radixLocalCounterBuffer = this.device.createBuffer({
             label: "Radix Local Counter Buffer",
             // each workgroup has 256 u32 local counters
             size: Math.ceil(splatCount / RADIX_THREADS_PER_WORKGROUP) * 256 * 4,
-            usage: GPUBufferUsage.STORAGE
-        });
-        this.radixBucketFlagBuffer = this.device.createBuffer({
-            label: "Radix Bucket Flag Buffer",
-            // each splat belongs to one radix bucket indicated by a u32 value
-            size: splatCount * 4,
             usage: GPUBufferUsage.STORAGE
         });
 
@@ -681,6 +689,7 @@ export default class ComputeSplatRenderer {
         }
 
         // Pass 3: Radix Sort Pass
+        const MAX_SORTABLE_SPLATS = MAX_BUFFER_SIZE / 4;
         {
             for (let offset = 0; offset < 64; offset += 8) {
                 const RadixParams = new Uint32Array([offset]);
@@ -691,7 +700,7 @@ export default class ComputeSplatRenderer {
                     pass.setBindGroup(0, this.sortBindGroupCount0);
                     pass.setBindGroup(1, this.sortBindGroupCount1);
                     const workgroupSize = 256;
-                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    const numWorkgroups = Math.max(8, Math.ceil(MAX_SORTABLE_SPLATS / workgroupSize));
                     pass.dispatchWorkgroups(numWorkgroups);
                     pass.end();
                 }
@@ -707,7 +716,7 @@ export default class ComputeSplatRenderer {
                     pass.setPipeline(this.sortPipelineScatter);
                     pass.setBindGroup(1, this.sortBindGroupScatter1);
                     const workgroupSize = 256;
-                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    const numWorkgroups = Math.max(8, Math.ceil(MAX_SORTABLE_SPLATS / workgroupSize));
                     pass.dispatchWorkgroups(numWorkgroups);
                     pass.end();
                 }
@@ -716,7 +725,7 @@ export default class ComputeSplatRenderer {
                     pass.setPipeline(this.sortPipelineCopy);
                     pass.setBindGroup(1, this.sortBindGroupCopy1);
                     const workgroupSize = 256;
-                    const numWorkgroups = Math.max(8, Math.ceil(this.splatCount / workgroupSize));
+                    const numWorkgroups = Math.max(8, Math.ceil(MAX_SORTABLE_SPLATS / workgroupSize));
                     pass.dispatchWorkgroups(numWorkgroups);
                     pass.end();
                 }
